@@ -1,0 +1,111 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum VehicleType {
+  CAR
+  SCOOTER
+
+  @@map("vehicle_type")
+}
+
+enum SlotStatus {
+  VACANT
+  OCCUPIED
+  OUT_OF_SERVICE
+
+  @@map("slot_status")
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+
+  @@map("session_status")
+}
+
+enum AdminRole {
+  ADMIN
+  OPERATOR
+
+  @@map("admin_role")
+}
+
+model Vehicle {
+  id            String          @id @default(uuid()) @db.Uuid
+  vehicleNumber String          @unique @map("vehicle_number") @db.VarChar(15)
+  vehicleType   VehicleType     @map("vehicle_type")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  sessions      ParkingSession[]
+
+  @@map("vehicles")
+}
+
+model Slot {
+  id           String          @id @default(uuid()) @db.Uuid
+  locationCode String          @unique @map("location_code") @db.VarChar(10)
+  slotType     VehicleType     @map("slot_type")
+  status       SlotStatus      @default(VACANT) @map("status")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  sessions     ParkingSession[]
+
+  @@index([slotType, status])
+  @@map("slots")
+}
+
+model RateMaster {
+  id            String      @id @default(uuid()) @db.Uuid
+  vehicleType   VehicleType @unique @map("vehicle_type")
+  ratePerHour   Decimal     @map("rate_per_hour") @db.Decimal(8, 2)
+  effectiveFrom DateTime    @map("effective_from") @db.Date
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("rate_master")
+}
+
+model ParkingSession {
+  id        String        @id @default(uuid()) @db.Uuid
+  vehicleId String        @map("vehicle_id") @db.Uuid
+  slotId    String        @map("slot_id") @db.Uuid
+  inTime    DateTime      @map("in_time") @db.Timestamptz()
+  outTime   DateTime?     @map("out_time") @db.Timestamptz()
+  status    SessionStatus @default(ACTIVE) @map("status")
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  slot    Slot    @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  bill    Bill?
+
+  @@index([status])
+  @@index([vehicleId, status])
+  @@map("parking_sessions")
+}
+
+model Bill {
+  id              String         @id @default(uuid()) @db.Uuid
+  sessionId       String         @unique @map("session_id") @db.Uuid
+  durationMinutes Int            @map("duration_minutes") @db.Integer
+  rateApplied     Decimal        @map("rate_applied") @db.Decimal(8, 2)
+  amount          Decimal        @map("amount") @db.Decimal(10, 2)
+  generatedOn     DateTime       @default(now()) @map("generated_on") @db.Timestamptz()
+
+  session ParkingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("bills")
+}
+
+model AdminUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  username     String    @unique @map("username") @db.VarChar(50)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  role         AdminRole @map("role")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("admin_users")
+}
