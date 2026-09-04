@@ -1,4 +1,4 @@
-# 🚗 Smart Parking Management System — Database Layer
+# Smart Parking Management System — Database Layer
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
@@ -11,32 +11,32 @@ This repository represents the **database-design implementation phase**: models,
 
 ---
 
-## 📌 Table of Contents
-- [Architecture & Design Principles](#-architecture--design-principles)
-- [Entity-Relationship Overview](#-entity-relationship-overview)
-- [Data Dictionary & Models](#-data-dictionary--models)
-- [Custom Database Constraints & Rules](#-custom-database-constraints--rules)
-- [Project Structure](#-project-structure)
-- [Getting Started](#-getting-started)
+## Table of Contents
+- [Architecture and Design Principles](#architecture-and-design-principles)
+- [Entity-Relationship Overview](#entity-relationship-overview)
+- [Data Dictionary and Models](#data-dictionary-and-models)
+- [Custom Database Constraints and Rules](#custom-database-constraints-and-rules)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Environment Setup](#environment-setup)
-  - [Installation & Migrations](#installation--migrations)
+  - [Installation and Migrations](#installation-and-migrations)
   - [Database Seeding](#database-seeding)
   - [Visual Inspection (Prisma Studio)](#visual-inspection-prisma-studio)
   - [Running Verification Tests](#running-verification-tests)
-- [Available Scripts](#-available-scripts)
-- [License](#-license)
+- [Available Scripts](#available-scripts)
+- [License](#license)
 
 ---
 
-## 🏗 Architecture & Design Principles
+## Architecture and Design Principles
 
 1. **Third Normal Form (3NF) Compliance**:
    - Eliminates data redundancy: `vehicles`, `slots`, `rate_master`, `parking_sessions`, `bills`, and `admin_users` are independent relational tables linked strictly via foreign keys.
 2. **UUID Primary Keys**:
    - Every entity generates a non-sequential, random UUID (`@id @default(uuid()) @db.Uuid`). Prevents guessable enumeration attacks on public API endpoints.
 3. **Historical Billing Integrity**:
-   - The `bills` table snapshots the applied hourly rate (`rate_applied`) at the moment a session closes. Future rate changes in `rate_master` never retroactively corrupt past transaction amounts.
+   - The `bills` table snapshots the applied hourly rate (`rate_applied`) at the moment a session closes. Future rate changes in `rate_master` never retroactively alter past transaction amounts.
 4. **Naming Conventions**:
    - **Database level**: `snake_case` table and column names via Prisma's `@@map` and `@map`.
    - **Application / Code level**: `camelCase` model accessors generated in the TypeScript Prisma Client.
@@ -44,7 +44,7 @@ This repository represents the **database-design implementation phase**: models,
 
 ---
 
-## 🗺 Entity-Relationship Overview
+## Entity-Relationship Overview
 
 ```mermaid
 erDiagram
@@ -106,7 +106,7 @@ erDiagram
 
 ---
 
-## 📖 Data Dictionary & Models
+## Data Dictionary and Models
 
 ### 1. `vehicles` (`Vehicle`)
 Represents vehicles entering and using the facility.
@@ -177,7 +177,7 @@ Authentication and RBAC records for operators and managers.
 
 ---
 
-## 🛡 Custom Database Constraints & Rules
+## Custom Database Constraints and Rules
 
 Enforced directly in PostgreSQL via migration [`prisma/migrations/20260904000002_add_custom_constraints/migration.sql`](prisma/migrations/20260904000002_add_custom_constraints/migration.sql):
 
@@ -195,7 +195,7 @@ Enforced directly in PostgreSQL via migration [`prisma/migrations/20260904000002
    ON "parking_sessions" ("vehicle_id")
    WHERE "status" = 'ACTIVE';
    ```
-   *Prevents double-entry for a car that is already registered inside the facility.*
+   *Prevents duplicate entry for a vehicle that is already marked active inside the facility.*
 
 3. **Prevent Slot Double-Booking (Partial Unique Index)**:
    ```sql
@@ -207,13 +207,13 @@ Enforced directly in PostgreSQL via migration [`prisma/migrations/20260904000002
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 .
 ├── .env.example                                      # Environment variable connection template
 ├── .gitignore                                         # Ignores .env, node_modules, logs
-├── package.json                                       # Node project metadata & scripts
+├── package.json                                       # Node project metadata and scripts
 ├── tsconfig.json                                      # TypeScript compiler options
 ├── README.md                                          # Technical documentation
 ├── prisma/
@@ -222,16 +222,16 @@ Enforced directly in PostgreSQL via migration [`prisma/migrations/20260904000002
 │   └── migrations/                                    # Version-controlled migration history
 │       ├── migration_lock.toml
 │       ├── 20260904000001_init/
-│       │   └── migration.sql                          # Base DDL for tables, enums, FKs & indexes
+│       │   └── migration.sql                          # Base DDL for tables, enums, FKs and indexes
 │       └── 20260904000002_add_custom_constraints/
-│           └── migration.sql                          # Raw SQL CHECK constraints & partial indexes
+│           └── migration.sql                          # Raw SQL CHECK constraints and partial indexes
 └── test/
     └── smoke.ts                                       # Comprehensive smoke-testing script
 ```
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18 or newer)
@@ -247,7 +247,7 @@ Update `DATABASE_URL` in `.env` with your PostgreSQL credentials:
 DATABASE_URL="postgresql://<USER>:<PASSWORD>@localhost:5432/<DATABASE_NAME>?schema=public"
 ```
 
-### Installation & Migrations
+### Installation and Migrations
 Install all dependencies:
 ```bash
 npm install
@@ -269,7 +269,7 @@ Populate the database with idempotent baseline and test data:
 npm run db:seed
 ```
 **Seeded data includes:**
-- Rates: `CAR` (₹40.00/hr) and `SCOOTER` (₹20.00/hr).
+- Rates: `CAR` (40.00/hr) and `SCOOTER` (20.00/hr).
 - Slots: 10 vacant bays (`C-01` through `C-05`, `S-01` through `S-05`).
 - Vehicles: 4 sample vehicles (`KA-01-AB-1234`, `MH-12-CD-5678`, `DL-04-EF-9012`, `TN-09-GH-3456`).
 - Transactions: 2 completed parking sessions with matching computed bills.
@@ -288,14 +288,14 @@ Execute the smoke test suite to programmatically verify relational integrity and
 npm run test:smoke
 ```
 **Test Coverage:**
-- ✅ **Test 1**: Multi-table relational query (`Vehicle -> ParkingSession -> Slot & Bill`) via a single Prisma `include`.
-- ✅ **Test 2**: Database rejection of a second `ACTIVE` session for the same vehicle.
-- ✅ **Test 3**: Database rejection of slot double-booking (`ACTIVE` session on an already occupied slot).
-- ✅ **Test 4**: Database rejection of invalid checkout timestamps (`out_time <= in_time`).
+- **Test 1**: Multi-table relational query (`Vehicle -> ParkingSession -> Slot and Bill`) via a single Prisma `include`.
+- **Test 2**: Database rejection of a second `ACTIVE` session for the same vehicle.
+- **Test 3**: Database rejection of slot double-booking (`ACTIVE` session on an already occupied slot).
+- **Test 4**: Database rejection of invalid checkout timestamps (`out_time <= in_time`).
 
 ---
 
-## ⚡ Available Scripts
+## Available Scripts
 
 | Command | Action |
 | :--- | :--- |
@@ -307,5 +307,5 @@ npm run test:smoke
 
 ---
 
-## 📄 License
+## License
 ISC
