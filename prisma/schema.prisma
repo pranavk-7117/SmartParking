@@ -36,26 +36,43 @@ enum AdminRole {
   @@map("admin_role")
 }
 
+model Location {
+  id        String      @id @default(uuid()) @db.Uuid
+  name      String      @map("name") @db.VarChar(100)
+  code      String      @unique @map("code") @db.VarChar(20)
+  city      String      @map("city") @db.VarChar(100)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  slots     Slot[]
+  operators AdminUser[]
+
+  @@map("locations")
+}
+
 model Vehicle {
-  id            String          @id @default(uuid()) @db.Uuid
-  vehicleNumber String          @unique @map("vehicle_number") @db.VarChar(15)
-  vehicleType   VehicleType     @map("vehicle_type")
-  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  id            String           @id @default(uuid()) @db.Uuid
+  vehicleNumber String           @unique @map("vehicle_number") @db.VarChar(15)
+  vehicleType   VehicleType      @map("vehicle_type")
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz()
   sessions      ParkingSession[]
 
   @@map("vehicles")
 }
 
 model Slot {
-  id           String          @id @default(uuid()) @db.Uuid
-  locationCode String          @unique @map("location_code") @db.VarChar(10)
-  slotType     VehicleType     @map("slot_type")
-  status       SlotStatus      @default(VACANT) @map("status")
-  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+  id           String           @id @default(uuid()) @db.Uuid
+  locationCode String           @unique @map("location_code") @db.VarChar(10)
+  slotType     VehicleType      @map("slot_type")
+  status       SlotStatus       @default(VACANT) @map("status")
+  locationId   String?          @map("location_id") @db.Uuid
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
   sessions     ParkingSession[]
 
+  location Location? @relation(fields: [locationId], references: [id])
+
   @@index([slotType, status])
+  @@index([locationId, slotType, status])
   @@map("slots")
 }
 
@@ -88,12 +105,12 @@ model ParkingSession {
 }
 
 model Bill {
-  id              String         @id @default(uuid()) @db.Uuid
-  sessionId       String         @unique @map("session_id") @db.Uuid
-  durationMinutes Int            @map("duration_minutes") @db.Integer
-  rateApplied     Decimal        @map("rate_applied") @db.Decimal(8, 2)
-  amount          Decimal        @map("amount") @db.Decimal(10, 2)
-  generatedOn     DateTime       @default(now()) @map("generated_on") @db.Timestamptz()
+  id              String   @id @default(uuid()) @db.Uuid
+  sessionId       String   @unique @map("session_id") @db.Uuid
+  durationMinutes Int      @map("duration_minutes") @db.Integer
+  rateApplied     Decimal  @map("rate_applied") @db.Decimal(8, 2)
+  amount          Decimal  @map("amount") @db.Decimal(10, 2)
+  generatedOn     DateTime @default(now()) @map("generated_on") @db.Timestamptz()
 
   session ParkingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -105,7 +122,10 @@ model AdminUser {
   username     String    @unique @map("username") @db.VarChar(50)
   passwordHash String    @map("password_hash") @db.VarChar(255)
   role         AdminRole @map("role")
+  locationId   String?   @map("location_id") @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  location Location? @relation(fields: [locationId], references: [id])
 
   @@map("admin_users")
 }
