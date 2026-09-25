@@ -61,9 +61,7 @@ authRouter.post('/login', async (req, res, next) => {
       { expiresIn } as jwt.SignOptions
     );
 
-    res.status(200).json({
-      access_token: token,
-      operator_id: user.id,
+    const userProfile = {
       id: user.id,
       username: user.username,
       name: user.name ?? user.username,
@@ -78,6 +76,14 @@ authRouter.post('/login', async (req, res, next) => {
         hour: '2-digit',
         minute: '2-digit',
       }),
+    };
+
+    res.status(200).json({
+      access_token: token,
+      token,
+      operator_id: user.id,
+      ...userProfile,
+      user: userProfile,
     });
   } catch (err) {
     next(err);
