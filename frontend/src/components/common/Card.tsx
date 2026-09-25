@@ -145,16 +145,28 @@ export const OccupancyCard: React.FC<OccupancyCardProps> = ({
   isUpdating = false,
 }) => {
   const safeTotal = total > 0 ? total : 1;
-  const pctAvailable = Math.round((available / safeTotal) * 100);
+  const pctAvailable = total > 0 ? Math.round((available / safeTotal) * 100) : 0;
 
   let borderShiftClass = 'border-l-4 border-l-success border-neutral-200';
   let badgeColor = 'text-success bg-emerald-50';
-  if (pctAvailable <= 10) {
+  let statusText = `${pctAvailable}% Available`;
+
+  if (total === 0) {
+    borderShiftClass = 'border-l-4 border-l-neutral-300 border-neutral-200';
+    badgeColor = 'text-neutral-500 bg-neutral-100';
+    statusText = '0 Slots';
+  } else if (available === 0) {
     borderShiftClass = 'border-l-4 border-l-danger border-neutral-200';
     badgeColor = 'text-danger bg-red-50';
+    statusText = 'FULL';
+  } else if (pctAvailable <= 10) {
+    borderShiftClass = 'border-l-4 border-l-danger border-neutral-200';
+    badgeColor = 'text-danger bg-red-50';
+    statusText = `${pctAvailable}% Available`;
   } else if (pctAvailable <= 30) {
     borderShiftClass = 'border-l-4 border-l-warning border-neutral-200';
     badgeColor = 'text-warning bg-amber-50';
+    statusText = `${pctAvailable}% Available`;
   }
 
   return (
@@ -182,7 +194,7 @@ export const OccupancyCard: React.FC<OccupancyCardProps> = ({
             {icon}
           </div>
           <span className={`text-xs font-bold px-2 py-0.5 rounded-pill ${badgeColor}`}>
-            {available === 0 ? 'FULL' : `${pctAvailable}% Available`}
+            {statusText}
           </span>
         </div>
       </div>

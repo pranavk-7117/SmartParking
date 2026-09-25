@@ -21,8 +21,6 @@ export interface SidebarProps {
   onToggleCollapse: () => void;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -30,8 +28,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   isMobileOpen,
   onCloseMobile,
-  onMouseEnter,
-  onMouseLeave,
 }) => {
   const { logout, currentUser } = useAuth();
 
@@ -76,20 +72,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const sidebarContent = (
     <div className="h-full flex flex-col justify-between bg-sidebar-bg text-white select-none">
       <div>
-        { /* Header Logo Area */ }
-        <div className="relative p-4 flex items-center border-b border-white/10 transition-all duration-200 ease-out">
+        { /* Header Logo Area with clean toggle */ }
+        <div className="relative p-4 flex items-center justify-between border-b border-white/10">
           <Link
             to="/dashboard"
-            className={`flex items-center gap-3 overflow-hidden text-left transition-all duration-200 ease-out ${
+            className={`flex items-center gap-3 overflow-hidden text-left ${
               isCollapsed ? 'justify-center w-full' : ''
             }`}
             onClick={onCloseMobile}
           >
-            <div className="w-9 h-9 rounded-control bg-sidebar-active flex items-center justify-center shrink-0 shadow-md border border-white/20 transition-transform duration-200 ease-out hover:scale-[1.02]">
+            <div className="w-9 h-9 rounded-control bg-sidebar-active flex items-center justify-center shrink-0 shadow-md border border-white/20">
               <Car className="w-5 h-5 text-white" />
             </div>
             {!isCollapsed && (
-              <div className="transition-all duration-200 ease-out opacity-100 translate-x-0">
+              <div>
                 <span className="font-extrabold text-base tracking-tight text-white block leading-tight">
                   AeroPark
                 </span>
@@ -99,6 +95,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
           </Link>
+
+          {!isCollapsed && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="p-1 rounded-control text-blue-200 hover:text-white hover:bg-white/10 transition-colors"
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
 
@@ -198,11 +206,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       <aside
-        className={`hidden md:block transition-all duration-300 ease-out z-30 shrink-0 ${
+        className={`hidden md:block transition-all duration-200 ease-out z-30 shrink-0 ${
           isCollapsed ? 'w-[4.5rem]' : 'w-64'
         }`}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
       >
         <div
           className="fixed inset-y-0 left-0 h-full overflow-y-auto transition-all duration-300 ease-out"

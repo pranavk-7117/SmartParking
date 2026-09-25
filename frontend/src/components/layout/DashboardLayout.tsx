@@ -7,11 +7,18 @@ import { useAuth } from '../../context/AuthContext';
 
 export const DashboardLayout: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sp_sidebar_collapsed') === 'true';
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const handleSidebarMouseEnter = () => setIsSidebarCollapsed(false);
-  const handleSidebarMouseLeave = () => setIsSidebarCollapsed(true);
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('sp_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   // If not authenticated, redirect to login
   if (!isAuthenticated) {
@@ -21,28 +28,27 @@ export const DashboardLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 flex flex-col font-sans">
       <div className="flex flex-1">
-        {/* Persistent/Responsive Sidebar */}
+        {/* Persistent Stable Sidebar (no hover jitter) */}
         <Sidebar
           isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          onToggleCollapse={toggleSidebar}
           isMobileOpen={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
-          onMouseEnter={handleSidebarMouseEnter}
-          onMouseLeave={handleSidebarMouseLeave}
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
-          <Topbar onOpenMobileMenu={() => setIsMobileMenuOpen(true)} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Topbar
+            onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={toggleSidebar}
+          />
 
           <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto">
             <Outlet />
           </main>
         </div>
       </div>
-
-      {/* Dev preview controls */}
-      <DevControlBar />
     </div>
   );
 };

@@ -31,6 +31,7 @@ export interface AvailabilityData {
 export interface ParkingSession {
   id: string;
   siteId: string;
+  siteName?: string;
   vehicleNumber: string;
   category: VehicleCategory;
   slotId: string;

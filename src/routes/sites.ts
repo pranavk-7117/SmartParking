@@ -176,6 +176,32 @@ sitesRouter.post('/', requireAuth, async (req, res, next) => {
       },
     });
 
+    // Auto-generate Slot records for cars and scooters
+    const carCount = data.totalCarSlots ?? 40;
+    const scooterCount = data.totalScooterSlots ?? 20;
+    const slotsToCreate: { locationId: string; locationCode: string; slotType: VehicleType; status: SlotStatus }[] = [];
+
+    for (let i = 1; i <= carCount; i++) {
+      slotsToCreate.push({
+        locationId: location.id,
+        locationCode: `C-${String(i).padStart(2, '0')}`,
+        slotType: VehicleType.CAR,
+        status: SlotStatus.VACANT,
+      });
+    }
+    for (let i = 1; i <= scooterCount; i++) {
+      slotsToCreate.push({
+        locationId: location.id,
+        locationCode: `S-${String(i).padStart(2, '0')}`,
+        slotType: VehicleType.SCOOTER,
+        status: SlotStatus.VACANT,
+      });
+    }
+
+    if (slotsToCreate.length > 0) {
+      await prisma.slot.createMany({ data: slotsToCreate });
+    }
+
     res.status(201).json({
       id: location.code,
       dbId: location.id,

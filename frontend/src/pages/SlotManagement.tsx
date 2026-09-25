@@ -313,9 +313,13 @@ export const SlotManagement: React.FC = () => {
                           {slot.currentVehicleNumber}
                         </span>
                       </div>
+                    ) : isDeactivated ? (
+                      <span className="text-[11px] font-medium text-neutral-400 italic truncate block" title={slot.deactivationReason || 'Maintenance'}>
+                        {slot.deactivationReason || 'Maintenance'}
+                      </span>
                     ) : (
-                      <span className="text-xs font-semibold text-neutral-500">
-                        {slot.locationCode}
+                      <span className="text-[11px] font-medium text-emerald-700/80">
+                        Vacant Bay
                       </span>
                     )}
                   </div>

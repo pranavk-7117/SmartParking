@@ -323,14 +323,24 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [isAuthenticated]);
 
-  // Initial load + periodic refresh every 30s
+  // Initial load + periodic real-time sync every 5s + immediate re-sync on tab focus
   useEffect(() => {
     loadAll();
     const interval = setInterval(() => {
       loadAll();
       triggerFlash();
-    }, 30_000);
-    return () => clearInterval(interval);
+    }, 5_000);
+
+    const handleFocus = () => {
+      loadAll();
+      triggerFlash();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadAll, triggerFlash, refreshRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = useCallback(() => {
@@ -341,30 +351,46 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
-  const currentSite = useMemo(
-    () => sites.find((s) => s.id === currentSiteId) || sites[0] || FALLBACK_SITE,
-    [sites, currentSiteId]
-  );
+  const ALL_SITES_META: Site = useMemo(() => {
+    const totalCars = sites.reduce((sum, s) => sum + (s.totalCarSlots || 0), 0);
+    const totalScooters = sites.reduce((sum, s) => sum + (s.totalScooterSlots || 0), 0);
+    return {
+      id: 'all',
+      name: 'All Parking Sites (Combined)',
+      address: `${sites.length} Active Parking Facilities`,
+      gateInfo: 'Network-wide Multi-Site Overview',
+      totalCarSlots: totalCars,
+      totalScooterSlots: totalScooters,
+      defaultCarRate: 30,
+      defaultScooterRate: 15,
+      status: 'Active',
+    };
+  }, [sites]);
 
-  const slots = useMemo(
-    () => allSlots.filter((s) => s.siteId === currentSiteId),
-    [allSlots, currentSiteId]
-  );
+  const currentSite = useMemo(() => {
+    if (currentSiteId === 'all') return ALL_SITES_META;
+    return sites.find((s) => s.id === currentSiteId) || sites[0] || FALLBACK_SITE;
+  }, [sites, currentSiteId, ALL_SITES_META]);
 
-  const sessions = useMemo(
-    () => allSessions.filter((s) => s.siteId === currentSiteId),
-    [allSessions, currentSiteId]
-  );
+  const slots = useMemo(() => {
+    if (currentSiteId === 'all') return allSlots;
+    return allSlots.filter((s) => s.siteId === currentSiteId);
+  }, [allSlots, currentSiteId]);
 
-  const rates = useMemo(
-    () => allRates.filter((r) => r.siteId === currentSiteId),
-    [allRates, currentSiteId]
-  );
+  const sessions = useMemo(() => {
+    if (currentSiteId === 'all') return allSessions;
+    return allSessions.filter((s) => s.siteId === currentSiteId);
+  }, [allSessions, currentSiteId]);
 
-  const rateHistory = useMemo(
-    () => allRateHistory.filter((rh) => rh.siteId === currentSiteId),
-    [allRateHistory, currentSiteId]
-  );
+  const rates = useMemo(() => {
+    if (currentSiteId === 'all') return allRates;
+    return allRates.filter((r) => r.siteId === currentSiteId);
+  }, [allRates, currentSiteId]);
+
+  const rateHistory = useMemo(() => {
+    if (currentSiteId === 'all') return allRateHistory;
+    return allRateHistory.filter((rh) => rh.siteId === currentSiteId);
+  }, [allRateHistory, currentSiteId]);
 
   const availability: AvailabilityData = useMemo(() => {
     const carSlots = slots.filter((s) => s.category === 'Car');
@@ -388,7 +414,21 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
     async (newSiteData: Omit<Site, 'id'>): Promise<Site> => {
       const created = await api.post<ApiSite>('/sites', newSiteData);
       const site = mapSite(created);
-      setSites((prev) => [...prev, site]);
+
+      // Re-fetch all sites and newly auto-generated slots so state is 100% in sync
+      try {
+        const [updatedSites, updatedSlots] = await Promise.all([
+          api.get<ApiSite[]>('/sites'),
+          api.get<ApiSlot[]>('/slots'),
+        ]);
+        setSites(updatedSites.map(mapSite));
+        setAllSlots(updatedSlots.map(mapSlot));
+      } catch (err) {
+        console.error('[LiveData] Failed to reload slots after addSite:', err);
+        setSites((prev) => [...prev, site]);
+      }
+
+      setCurrentSiteId(site.id);
       triggerFlash();
       return site;
     },

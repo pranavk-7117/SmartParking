@@ -17,6 +17,24 @@ import { Button } from '../components/common/Button';
 import { ParkingSession } from '../types';
 import { exportToCSV, exportToPDF } from '../utils/exportUtils';
 
+function formatDateTime(str?: string | null): string {
+  if (!str) return '—';
+  try {
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return str;
+  }
+}
+
 export const SessionHistory: React.FC = () => {
   const navigate = useNavigate();
   const { sessions, currentSite } = useLiveData();
@@ -58,9 +76,11 @@ export const SessionHistory: React.FC = () => {
 
       let matchesDate = true;
       if (dateFilter === 'Today') {
-        matchesDate = s.inTime.includes('04-Sep-2026');
+        const todayStr = new Date().toISOString().slice(0, 10);
+        matchesDate = s.inTime.startsWith(todayStr);
       } else if (dateFilter === 'Yesterday') {
-        matchesDate = s.inTime.includes('03-Sep-2026');
+        const yestStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        matchesDate = s.inTime.startsWith(yestStr);
       }
 
       return matchesSearch && matchesCategory && matchesStatus && matchesDate;
@@ -198,7 +218,11 @@ export const SessionHistory: React.FC = () => {
       header: 'In-Time',
       sortable: true,
       width: '15%',
-      render: (s) => <span className="text-xs text-neutral-600 truncate block" title={s.inTime}>{s.inTime}</span>,
+      render: (s) => (
+        <span className="text-xs text-neutral-800 font-medium truncate block" title={s.inTime}>
+          {formatDateTime(s.inTime)}
+        </span>
+      ),
     },
     {
       key: 'outTime',
@@ -207,7 +231,7 @@ export const SessionHistory: React.FC = () => {
       width: '15%',
       render: (s) => (
         <span className="text-xs text-neutral-600 truncate block" title={s.outTime || 'In Session'}>
-          {s.outTime || '— In Session —'}
+          {s.outTime ? formatDateTime(s.outTime) : '— In Session —'}
         </span>
       ),
     },
