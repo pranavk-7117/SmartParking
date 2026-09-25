@@ -269,7 +269,15 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const [isLoading, setIsLoading] = useState(true);
   const [sites, setSites] = useState<Site[]>([]);
-  const [currentSiteId, setCurrentSiteId] = useState<string>('');
+  const [currentSiteId, setCurrentSiteIdState] = useState<string>(() => {
+    return localStorage.getItem('sp_selected_site') || 'site-hadapsar';
+  });
+
+  const setCurrentSiteId = useCallback((id: string) => {
+    localStorage.setItem('sp_selected_site', id);
+    setCurrentSiteIdState(id);
+  }, []);
+
   const [allSlots, setAllSlots] = useState<ParkingSlot[]>([]);
   const [allSessions, setAllSessions] = useState<ParkingSession[]>([]);
   const [allRates, setAllRates] = useState<RateItem[]>([]);
@@ -311,10 +319,15 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
       setAllRateHistory(rateHistoryRaw.map(mapRateHistory));
       setOperators(operatorsRaw.map(mapOperator));
 
-      // Set default site to first active one
-      setCurrentSiteId((prev) => {
+      // Preserve 'all' view or user-selected site; default to AeroPark Hadapsar if available
+      setCurrentSiteIdState((prev) => {
+        if (prev === 'all') return 'all';
         if (prev && mappedSites.some((s) => s.id === prev)) return prev;
-        return mappedSites[0]?.id ?? '';
+        const saved = localStorage.getItem('sp_selected_site');
+        if (saved === 'all') return 'all';
+        if (saved && mappedSites.some((s) => s.id === saved)) return saved;
+        const hadapsar = mappedSites.find((s) => s.id === 'site-hadapsar');
+        return hadapsar?.id ?? mappedSites[0]?.id ?? '';
       });
     } catch (err) {
       console.error('[LiveData] Failed to load data:', err);
