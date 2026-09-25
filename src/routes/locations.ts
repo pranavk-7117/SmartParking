@@ -12,7 +12,7 @@ export const locationsRouter = Router();
  */
 locationsRouter.get('/:id/availability', requireAuth, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     // Verify location exists
     const location = await prisma.location.findUnique({ where: { id } });
@@ -24,14 +24,14 @@ locationsRouter.get('/:id/availability', requireAuth, async (req, res, next) => 
     const slots = await prisma.slot.groupBy({
       by: ['slotType', 'status'],
       where: { locationId: id },
-      _count: { id: true },
+      _count: { _all: true },
     });
 
     // Build counts with defaults of 0
     const countMap: Record<string, Record<string, number>> = {};
     for (const row of slots) {
       if (!countMap[row.slotType]) countMap[row.slotType] = {};
-      countMap[row.slotType][row.status] = row._count.id;
+      countMap[row.slotType][row.status] = row._count._all;
     }
 
     const carVacant    = countMap[VehicleType.CAR]?.[SlotStatus.VACANT]    ?? 0;

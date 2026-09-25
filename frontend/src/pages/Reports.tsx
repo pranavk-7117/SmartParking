@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
@@ -19,18 +19,19 @@ import { Select } from '../components/common/Input';
 import { Table, Column } from '../components/common/Table';
 import { BarChart, LineChart } from '../components/charts/SimpleCharts';
 import { SkeletonChart, SkeletonCard } from '../components/common/Skeleton';
-import {
-  revenueReportData,
-  occupancyReportData,
-  durationReportData,
-  transactionsReportData,
-} from '../data/mockData';
-import { ReportDataPoint } from '../types';
+import { ReportData, ReportDataPoint } from '../types';
 import { exportToCSV, exportToPDF } from '../utils/exportUtils';
+import { api } from '../api/client';
+
+const EMPTY_REPORT: ReportData = {
+  type: 'Revenue',
+  dataPoints: [],
+  summary: { totalRevenue: 0, peakOccupancyPct: 0, avgDurationMinutes: 0, totalTransactions: 0 },
+};
 
 export const Reports: React.FC = () => {
   const { showToast } = useToast();
-  const { currentSite } = useLiveData();
+  const { currentSite, currentSiteId } = useLiveData();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const tabParam = searchParams.get('tab');
@@ -40,11 +41,12 @@ export const Reports: React.FC = () => {
   const [dateRange, setDateRange] = useState<string>('This Week');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [reportData, setReportData] = useState<ReportData>(EMPTY_REPORT);
 
   useEffect(() => {
     if (tabParam) {
       if (['Revenue', 'Occupancy', 'Duration', 'Transactions'].includes(tabParam)) {
-        setReportType(tabParam as any);
+        setReportType(tabParam as 'Revenue' | 'Occupancy' | 'Duration' | 'Transactions');
       }
     }
     if (rangeParam) {
@@ -52,24 +54,35 @@ export const Reports: React.FC = () => {
     }
   }, [tabParam, rangeParam]);
 
-  const handleTabChange = (newType: 'Revenue' | 'Occupancy' | 'Duration' | 'Transactions') => {
+  const fetchReport = useCallback(async (type: string, range: string, siteId: string) => {
+    if (!siteId) return;
     setIsLoading(true);
+    try {
+      const data = await api.get<ReportData>(
+        `/reports?type=${encodeURIComponent(type)}&range=${encodeURIComponent(range)}&siteId=${encodeURIComponent(siteId)}`
+      );
+      setReportData(data);
+    } catch (err) {
+      console.error('[Reports] fetch failed:', err);
+      setReportData({ ...EMPTY_REPORT, type: type as ReportData['type'] });
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReport(reportType, dateRange, currentSiteId);
+  }, [reportType, dateRange, currentSiteId, fetchReport]);
+
+  const handleTabChange = (newType: 'Revenue' | 'Occupancy' | 'Duration' | 'Transactions') => {
     setReportType(newType);
     setSearchParams((prev) => {
       prev.set('tab', newType);
       return prev;
     });
-    setTimeout(() => setIsLoading(false), 200);
   };
 
-  const currentReport =
-    reportType === 'Revenue'
-      ? revenueReportData
-      : reportType === 'Occupancy'
-      ? occupancyReportData
-      : reportType === 'Duration'
-      ? durationReportData
-      : transactionsReportData;
+  const currentReport = reportData;
 
   // Apply the Car/Scooter category filter to the underlying data points.
   // Previously `categoryFilter` was only used in display text and never
@@ -191,7 +204,7 @@ export const Reports: React.FC = () => {
         { label: 'Total Revenue', value: `INR ${currentReport.summary.totalRevenue.toLocaleString()}` },
         { label: 'Peak Occupancy', value: `${currentReport.summary.peakOccupancyPct}%` },
         { label: 'Avg Stay', value: `${Math.floor(currentReport.summary.avgDurationMinutes / 60)}h ${currentReport.summary.avgDurationMinutes % 60}m` },
-        { label: 'Transactions', value: currentReport.summary.totalTransactions || 614 },
+        { label: 'Transactions', value: currentReport.summary.totalTransactions ?? 0 },
       ],
       headers,
       rows,

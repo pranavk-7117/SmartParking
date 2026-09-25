@@ -53,12 +53,6 @@ export const Settings: React.FC = () => {
       return;
     }
 
-    const siteSlug = newSiteName
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .replace(/-+/g, '-');
-    const newSiteId = `site-${siteSlug}`;
-
     addSite({
       name: newSiteName.trim(),
       address: newSiteAddress.trim(),
@@ -68,12 +62,16 @@ export const Settings: React.FC = () => {
       defaultCarRate: parseInt(newCarRate, 10) || 30,
       defaultScooterRate: parseInt(newScooterRate, 10) || 15,
       status: newSiteStatus,
-    });
-
-    showToast(`Site "${newSiteName}" added successfully. Now selectable in Site Switcher!`, 'success');
-    setIsAddSiteModalOpen(false);
-    setNewSiteName('');
-    setNewSiteAddress('');
+    })
+      .then(() => {
+        showToast(`Site "${newSiteName}" added successfully. Now selectable in Site Switcher!`, 'success');
+        setIsAddSiteModalOpen(false);
+        setNewSiteName('');
+        setNewSiteAddress('');
+      })
+      .catch(() => {
+        showToast('Failed to add site. Please try again.', 'error');
+      });
   };
 
   return (

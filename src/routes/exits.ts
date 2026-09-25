@@ -79,8 +79,11 @@ exitsRouter.post('/', requireAuth, async (req, res, next) => {
     const durationMinutes = Math.max(Math.floor(durationMs / 60_000), 1);
     const durationHours   = Math.ceil(durationMinutes / 60);          // ceiling-hour
 
-    const rateRow = await prisma.rateMaster.findUnique({
-      where: { vehicleType: session.vehicle.vehicleType },
+    const rateRow = await prisma.rateMaster.findFirst({
+      where: {
+        locationId: session.slot.locationId,
+        vehicleType: session.vehicle.vehicleType,
+      },
     });
     const ratePerHour = rateRow ? parseFloat(rateRow.ratePerHour.toString()) : 0;
     const amount      = durationHours * ratePerHour;

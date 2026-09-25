@@ -37,14 +37,26 @@ enum AdminRole {
 }
 
 model Location {
-  id        String      @id @default(uuid()) @db.Uuid
-  name      String      @map("name") @db.VarChar(100)
-  code      String      @unique @map("code") @db.VarChar(20)
-  city      String      @map("city") @db.VarChar(100)
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  id                 String      @id @default(uuid()) @db.Uuid
+  name               String      @map("name") @db.VarChar(100)
+  code               String      @unique @map("code") @db.VarChar(50)
+  city               String      @map("city") @db.VarChar(100)
+  address            String?     @map("address") @db.VarChar(255)
+  gateInfo           String?     @map("gate_info") @db.VarChar(255)
+  totalCarSlots      Int?        @map("total_car_slots")
+  totalScooterSlots  Int?        @map("total_scooter_slots")
+  defaultCarRate     Decimal?    @map("default_car_rate") @db.Decimal(8, 2)
+  defaultScooterRate Decimal?    @map("default_scooter_rate") @db.Decimal(8, 2)
+  status             String      @default("Active") @map("status") @db.VarChar(50)
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz()
 
-  slots     Slot[]
-  operators AdminUser[]
+  slots                 Slot[]
+  operators             AdminUser[]
+  rates                 RateMaster[]
+  rateHistory           RateHistory[]
+  deactivationEvents    SlotDeactivationEvent[]
+  incomingReassignments OperatorReassignment[]  @relation("ToLocation")
+  outgoingReassignments OperatorReassignment[]  @relation("FromLocation")
 
   @@map("locations")
 }
@@ -60,30 +72,69 @@ model Vehicle {
 }
 
 model Slot {
-  id           String           @id @default(uuid()) @db.Uuid
-  locationCode String           @unique @map("location_code") @db.VarChar(10)
-  slotType     VehicleType      @map("slot_type")
-  status       SlotStatus       @default(VACANT) @map("status")
-  locationId   String?          @map("location_id") @db.Uuid
-  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
-  sessions     ParkingSession[]
+  id                 String      @id @default(uuid()) @db.Uuid
+  locationCode       String      @map("location_code") @db.VarChar(20)
+  slotType           VehicleType @map("slot_type")
+  status             SlotStatus  @default(VACANT) @map("status")
+  locationId         String?     @map("location_id") @db.Uuid
+  deactivationReason String?     @map("deactivation_reason") @db.VarChar(255)
+  deactivatedAt      DateTime?   @map("deactivated_at") @db.Timestamptz()
+  deactivatedBy      String?     @map("deactivated_by") @db.VarChar(100)
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz()
 
-  location Location? @relation(fields: [locationId], references: [id])
+  sessions           ParkingSession[]
+  deactivationEvents SlotDeactivationEvent[]
+  location           Location?               @relation(fields: [locationId], references: [id])
 
+  @@unique([locationId, locationCode])
   @@index([slotType, status])
   @@index([locationId, slotType, status])
   @@map("slots")
 }
 
+model SlotDeactivationEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  slotId     String   @map("slot_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  action     String   @map("action") @db.VarChar(20)
+  reason     String   @map("reason") @db.VarChar(255)
+  actionedBy String   @map("actioned_by") @db.VarChar(100)
+  actionedAt DateTime @default(now()) @map("actioned_at") @db.Timestamptz()
+
+  slot     Slot     @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("slot_deactivation_events")
+}
+
 model RateMaster {
   id            String      @id @default(uuid()) @db.Uuid
-  vehicleType   VehicleType @unique @map("vehicle_type")
+  locationId    String?     @map("location_id") @db.Uuid
+  vehicleType   VehicleType @map("vehicle_type")
   ratePerHour   Decimal     @map("rate_per_hour") @db.Decimal(8, 2)
   effectiveFrom DateTime    @map("effective_from") @db.Date
+  lastUpdatedBy String?     @map("last_updated_by") @db.VarChar(100)
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz()
 
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@unique([locationId, vehicleType])
   @@map("rate_master")
+}
+
+model RateHistory {
+  id          String      @id @default(uuid()) @db.Uuid
+  locationId  String      @map("location_id") @db.Uuid
+  vehicleType VehicleType @map("vehicle_type")
+  oldRate     Decimal     @map("old_rate") @db.Decimal(8, 2)
+  newRate     Decimal     @map("new_rate") @db.Decimal(8, 2)
+  changedBy   String      @map("changed_by") @db.VarChar(100)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz()
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("rate_history")
 }
 
 model ParkingSession {
@@ -118,14 +169,36 @@ model Bill {
 }
 
 model AdminUser {
-  id           String    @id @default(uuid()) @db.Uuid
-  username     String    @unique @map("username") @db.VarChar(50)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  role         AdminRole @map("role")
-  locationId   String?   @map("location_id") @db.Uuid
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  id                     String    @id @default(uuid()) @db.Uuid
+  username               String    @unique @map("username") @db.VarChar(50)
+  name                   String?   @map("name") @db.VarChar(100)
+  contact                String?   @map("contact") @db.VarChar(50)
+  passwordHash           String    @map("password_hash") @db.VarChar(255)
+  role                   AdminRole @map("role")
+  status                 String    @default("Active") @map("status") @db.VarChar(20)
+  authMethod             String    @default("Password") @map("auth_method") @db.VarChar(50)
+  sessionsProcessedCount Int       @default(0) @map("sessions_processed_count")
+  locationId             String?   @map("location_id") @db.Uuid
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
-  location Location? @relation(fields: [locationId], references: [id])
+  location      Location?              @relation(fields: [locationId], references: [id])
+  reassignments OperatorReassignment[]
 
   @@map("admin_users")
+}
+
+model OperatorReassignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  operatorId     String   @map("operator_id") @db.Uuid
+  fromLocationId String?  @map("from_location_id") @db.Uuid
+  toLocationId   String   @map("to_location_id") @db.Uuid
+  reassignedBy   String   @map("reassigned_by") @db.VarChar(100)
+  reason         String?  @map("reason") @db.VarChar(255)
+  reassignedAt   DateTime @default(now()) @map("reassigned_at") @db.Timestamptz()
+
+  operator     AdminUser @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  fromLocation Location? @relation("FromLocation", fields: [fromLocationId], references: [id])
+  toLocation   Location  @relation("ToLocation", fields: [toLocationId], references: [id])
+
+  @@map("operator_reassignments")
 }
