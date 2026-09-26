@@ -244,6 +244,8 @@ class ParkingRepository(
 
     suspend fun clearLocalLocationCache() = withContext(Dispatchers.IO) {
         database.locationDao().clearLocation()
+        database.availabilityDao().clearAvailability()
+        database.activeSessionDao().clearAllActiveSessions()
     }
 
     suspend fun refreshLocationAndRates() = withContext(Dispatchers.IO) {
@@ -268,7 +270,7 @@ class ParkingRepository(
                 val availRes = apiService.getSlotAvailability(dto.locationId)
                 if (availRes.isSuccessful && availRes.body() != null) {
                     val aDto = availRes.body()!!
-                    database.availabilityDao().insertAvailability(
+                    database.availabilityDao().replaceAvailability(
                         SlotAvailabilityEntity(
                             locationId = aDto.locationId,
                             carVacant = aDto.carVacant,

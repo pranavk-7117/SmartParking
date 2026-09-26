@@ -39,11 +39,20 @@ interface AvailabilityDao {
     @Query("SELECT * FROM slot_availability WHERE locationId = :locationId LIMIT 1")
     fun getAvailability(locationId: String): Flow<SlotAvailabilityEntity?>
 
-    @Query("SELECT * FROM slot_availability LIMIT 1")
+    @Query("SELECT * FROM slot_availability ORDER BY lastUpdated DESC LIMIT 1")
     fun getFirstAvailability(): Flow<SlotAvailabilityEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAvailability(entity: SlotAvailabilityEntity)
+
+    @Query("DELETE FROM slot_availability")
+    suspend fun clearAvailability()
+
+    @Transaction
+    suspend fun replaceAvailability(entity: SlotAvailabilityEntity) {
+        clearAvailability()
+        insertAvailability(entity)
+    }
 
     @Query("""
         UPDATE slot_availability 
@@ -113,6 +122,9 @@ interface ActiveSessionDao {
 
     @Query("DELETE FROM active_sessions WHERE isPendingSync = 0")
     suspend fun clearConfirmedSessions()
+
+    @Query("DELETE FROM active_sessions")
+    suspend fun clearAllActiveSessions()
 }
 
 @Dao
