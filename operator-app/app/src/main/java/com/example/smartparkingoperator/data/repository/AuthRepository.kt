@@ -4,7 +4,9 @@ import com.example.smartparkingoperator.data.network.ConnectivityObserver
 import com.example.smartparkingoperator.data.remote.ApiService
 import com.example.smartparkingoperator.data.remote.dto.LoginRequest
 import com.example.smartparkingoperator.data.security.SecureSessionManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AuthRepository(
@@ -39,7 +41,8 @@ class AuthRepository(
                     operatorUsername = body.username,
                     role = body.role
                 )
-                // Opportunistically populate local cache
+                // Opportunistically populate local cache with clean location state
+                parkingRepository.clearLocalLocationCache()
                 parkingRepository.refreshLocationAndRates()
                 Result.success(true)
             } else {
@@ -62,5 +65,10 @@ class AuthRepository(
 
     fun logout() {
         sessionManager.clearSession()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                parkingRepository.clearLocalLocationCache()
+            } catch (_: Exception) {}
+        }
     }
 }

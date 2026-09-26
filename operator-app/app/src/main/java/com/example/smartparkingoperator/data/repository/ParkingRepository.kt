@@ -242,6 +242,10 @@ class ParkingRepository(
     // Opportunistic Background Refresh (Network -> Room)
     // -------------------------------------------------------------
 
+    suspend fun clearLocalLocationCache() = withContext(Dispatchers.IO) {
+        database.locationDao().clearLocation()
+    }
+
     suspend fun refreshLocationAndRates() = withContext(Dispatchers.IO) {
         if (!connectivityObserver.isConnected() || !sessionManager.isLoggedIn()) return@withContext
 
@@ -250,7 +254,7 @@ class ParkingRepository(
             val assignmentRes = apiService.getAssignedLocation()
             if (assignmentRes.isSuccessful && assignmentRes.body() != null) {
                 val dto = assignmentRes.body()!!
-                database.locationDao().insertLocation(
+                database.locationDao().replaceLocation(
                     LocationAssignmentEntity(
                         id = dto.locationId,
                         name = dto.locationName,

@@ -12,15 +12,16 @@ export const meRouter = Router();
  */
 meRouter.get('/assignment', requireAuth, async (req, res, next) => {
   try {
-    const locationId = req.operator!.locationId;
-    if (!locationId) {
+    const operator = await prisma.adminUser.findUnique({
+      where: { id: req.operator!.id },
+      include: { location: true },
+    });
+
+    if (!operator || !operator.location) {
       throw new AppError('No location assignment found for this operator', 404);
     }
 
-    const location = await prisma.location.findUnique({ where: { id: locationId } });
-    if (!location) {
-      throw new AppError('Assigned location not found', 404);
-    }
+    const location = operator.location;
 
     res.json({
       location_id: location.id,

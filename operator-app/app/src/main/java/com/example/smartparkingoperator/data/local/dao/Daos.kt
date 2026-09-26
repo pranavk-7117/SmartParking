@@ -15,10 +15,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LocationDao {
-    @Query("SELECT * FROM location_assignment LIMIT 1")
+    @Query("SELECT * FROM location_assignment ORDER BY lastUpdated DESC LIMIT 1")
     fun getLocation(): Flow<LocationAssignmentEntity?>
 
-    @Query("SELECT * FROM location_assignment LIMIT 1")
+    @Query("SELECT * FROM location_assignment ORDER BY lastUpdated DESC LIMIT 1")
     suspend fun getLocationDirect(): LocationAssignmentEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -26,6 +26,12 @@ interface LocationDao {
 
     @Query("DELETE FROM location_assignment")
     suspend fun clearLocation()
+
+    @Transaction
+    suspend fun replaceLocation(entity: LocationAssignmentEntity) {
+        clearLocation()
+        insertLocation(entity)
+    }
 }
 
 @Dao
