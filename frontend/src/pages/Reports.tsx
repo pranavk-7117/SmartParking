@@ -322,14 +322,14 @@ export const Reports: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center bg-neutral-100 p-1 rounded-control border border-neutral-200 w-full md:w-auto">
+      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="flex items-center bg-neutral-100 p-1 rounded-control border border-neutral-200 w-full md:w-auto overflow-x-auto scrollbar-none">
           {(['Revenue', 'Occupancy', 'Duration', 'Transactions'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => handleTabChange(tab)}
-              className={`flex-1 md:flex-none px-3.5 py-1.5 rounded-[6px] text-xs font-bold transition-all ${
+              className={`flex-1 md:flex-none px-3.5 py-1.5 rounded-[6px] text-xs font-bold transition-all whitespace-nowrap ${
                 reportType === tab
                   ? 'bg-white text-primary shadow-xs font-extrabold'
                   : 'text-neutral-600 hover:text-neutral-900'
@@ -346,8 +346,8 @@ export const Reports: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
-          <div className="w-36">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto justify-end">
+          <div className="w-full sm:w-36">
             <Select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
@@ -360,7 +360,7 @@ export const Reports: React.FC = () => {
             />
           </div>
 
-          <div className="w-36">
+          <div className="w-full sm:w-36">
             <Select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}

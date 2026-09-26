@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { PrismaClient, AdminRole, AdminUser, Location, OperatorReassignment } from '@prisma/client';
+import { AdminRole, AdminUser, Location, OperatorReassignment } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 export const operatorsRouter = Router();
 
 type OperatorWithRelations = AdminUser & {

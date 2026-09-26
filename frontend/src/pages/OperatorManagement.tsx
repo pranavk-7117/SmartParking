@@ -253,8 +253,8 @@ export const OperatorManagement: React.FC = () => {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="w-full md:w-auto flex-1 flex flex-col sm:flex-row items-center gap-2.5">
+      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="w-full md:w-auto flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="w-full sm:w-64">
             <SearchInput
               value={searchQuery}
@@ -284,7 +284,7 @@ export const OperatorManagement: React.FC = () => {
           </div>
         </div>
 
-        <span className="text-xs text-neutral-500 shrink-0">
+        <span className="text-xs text-neutral-500 shrink-0 self-end sm:self-center">
           Showing {filteredOperators.length} operators
         </span>
       </div>
@@ -351,7 +351,7 @@ export const OperatorManagement: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
             <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>
               Cancel
             </Button>
@@ -397,7 +397,7 @@ export const OperatorManagement: React.FC = () => {
               onChange={(e) => setReassignReason(e.target.value)}
             />
 
-            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
+            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
               <Button variant="secondary" onClick={() => setReassigningOperator(null)}>
                 Cancel
               </Button>

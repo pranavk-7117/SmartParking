@@ -381,7 +381,8 @@ fun CaptureExitScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -461,18 +462,20 @@ private fun ReceiptLineItem(
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
+            color = TextSecondary,
+            modifier = Modifier.weight(0.45f)
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (isBold) FontWeight.Bold else FontWeight.Medium,
-            color = TextPrimary
+            color = TextPrimary,
+            modifier = Modifier.weight(0.55f)
         )
     }
 }

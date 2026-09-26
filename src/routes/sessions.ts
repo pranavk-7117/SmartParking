@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import {
-  PrismaClient,
   SessionStatus,
   VehicleType,
   ParkingSession,
@@ -11,8 +10,8 @@ import {
 } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 export const sessionsRouter = Router();
 
 type SessionWithRelations = ParkingSession & {

@@ -308,7 +308,7 @@ export const SessionHistory: React.FC = () => {
         </div>
 
         {/* Export Buttons per §3.5 */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="secondary"
             size="sm"

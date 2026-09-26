@@ -74,7 +74,7 @@ export const Modal: React.FC<ModalProps> = ({
         <div className="p-5">{children}</div>
 
         {footer && (
-          <div className="p-4 border-t border-neutral-100 bg-neutral-50/60 flex items-center justify-end gap-2.5">
+          <div className="p-4 border-t border-neutral-100 bg-neutral-50/60 flex flex-wrap items-center justify-end gap-2.5">
             {footer}
           </div>
         )}
@@ -124,7 +124,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
         </div>
       </div>
 
-      <div className="mt-6 flex items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
+      <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
         <Button variant="secondary" onClick={onClose} disabled={isLoading}>
           {cancelLabel}
         </Button>

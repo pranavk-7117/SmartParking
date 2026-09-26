@@ -1,11 +1,9 @@
 package com.example.smartparkingoperator.data.sync
 
 import android.content.Context
-import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -35,12 +33,7 @@ class SyncWorker(
         private const val PERIODIC_SYNC_WORK_NAME = "smart_parking_periodic_sync"
 
         fun scheduleImmediateSync(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
             val syncRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setConstraints(constraints)
                 .setBackoffCriteria(
                     androidx.work.BackoffPolicy.EXPONENTIAL,
                     10,
@@ -56,12 +49,7 @@ class SyncWorker(
         }
 
         fun schedulePeriodicSync(context: Context) {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
             val periodicRequest = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(

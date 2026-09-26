@@ -73,7 +73,8 @@ fun PersistentOfflineBanner(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
                 color = StatusWarning,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
             )
         }
     }

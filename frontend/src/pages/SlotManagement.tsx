@@ -174,9 +174,9 @@ export const SlotManagement: React.FC = () => {
       </div>
 
       {/* Toolbar: Search, Filters & View Toggle */}
-      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {/* Search & Category & Status Filters */}
-        <div className="w-full md:w-auto flex-1 flex flex-col sm:flex-row items-center gap-2.5">
+        <div className="w-full md:w-auto flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="w-full sm:w-64">
             <SearchInput
               value={searchQuery}
@@ -218,7 +218,7 @@ export const SlotManagement: React.FC = () => {
                 setCategoryFilter('All');
                 setStatusFilter('All');
               }}
-              className="text-xs text-primary hover:underline font-medium shrink-0 whitespace-nowrap px-2"
+              className="text-xs text-primary hover:underline font-medium shrink-0 whitespace-nowrap px-2 self-start sm:self-center"
             >
               Clear filters
             </button>
@@ -392,7 +392,7 @@ export const SlotManagement: React.FC = () => {
             ]}
           />
 
-          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
             <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>
               Cancel
             </Button>

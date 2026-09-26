@@ -238,27 +238,27 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Scope Notification */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-card border border-neutral-200 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-control bg-primary/10 text-primary flex items-center justify-center shrink-0">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-card border border-neutral-200 shadow-xs">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="w-10 h-10 rounded-control bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
             {currentSiteId === 'all' ? <Layers className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black text-neutral-900 tracking-tight">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-black text-neutral-900 tracking-tight truncate">
                 {currentSiteId === 'all' ? 'Multi-Site Network Dashboard' : currentSite.name}
               </h1>
               {currentSiteId === 'all' ? (
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-primary text-white px-2 py-0.5 rounded-pill">
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-primary text-white px-2 py-0.5 rounded-pill shrink-0">
                   {sites.length} Sites Combined
                 </span>
               ) : (
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-pill border border-neutral-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-pill border border-neutral-200 shrink-0">
                   {currentSite.status}
                 </span>
               )}
             </div>
-            <p className="text-xs text-neutral-500 mt-0.5">
+            <p className="text-xs text-neutral-500 mt-0.5 truncate">
               {currentSiteId === 'all'
                 ? `Consolidated live overview of all ${sites.length} parking facilities across the network`
                 : `${currentSite.address || 'Facility'} • Gate: ${currentSite.gateInfo || 'Main Gate'}`}
@@ -266,7 +266,7 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-neutral-100">
           {currentSiteId !== 'all' ? (
             <button
               type="button"
@@ -281,7 +281,7 @@ export const Dashboard: React.FC = () => {
               Live Network Mode
             </span>
           )}
-          <span className="text-xs text-neutral-400">
+          <span className="text-xs text-neutral-400 font-mono">
             Updated: {new Date(availability.updatedAt).toLocaleTimeString()}
           </span>
         </div>
@@ -406,7 +406,7 @@ export const Dashboard: React.FC = () => {
       {/* Row 3: When in COMBINED Mode, show the Per-Location Comparison Grid & Chart */}
       {currentSiteId === 'all' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-bold text-neutral-900">
                 Facility-by-Facility Breakdown
@@ -521,7 +521,7 @@ export const Dashboard: React.FC = () => {
 
       {/* Row 4: Recent Transactions Table */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold text-neutral-900">
               {currentSiteId === 'all' ? 'Network Recent Transactions' : 'Recent Transactions'}
@@ -573,7 +573,7 @@ export const Dashboard: React.FC = () => {
             {alerts.map((alert) => (
               <div
                 key={alert.id}
-                className={`p-3 rounded-control border flex items-start justify-between gap-3 text-xs ${
+                className={`p-3 rounded-control border flex flex-wrap items-start justify-between gap-3 text-xs ${
                   alert.severity === 'danger'
                     ? 'bg-red-50/60 border-red-200 text-red-900'
                     : alert.severity === 'warning'

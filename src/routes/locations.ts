@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient, VehicleType, SlotStatus } from '@prisma/client';
+import { VehicleType, SlotStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 export const locationsRouter = Router();
 
 /**

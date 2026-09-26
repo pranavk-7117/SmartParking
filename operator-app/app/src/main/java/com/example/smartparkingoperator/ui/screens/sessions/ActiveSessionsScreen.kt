@@ -81,7 +81,7 @@ fun ActiveSessionsScreen(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Active Parked Vehicles",
                     style = MaterialTheme.typography.titleLarge,
@@ -165,7 +165,7 @@ private fun ActiveSessionItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 Icon(
                     imageVector = if (session.vehicleType == "CAR") Icons.Default.DirectionsCar else Icons.Default.TwoWheeler,
                     contentDescription = session.vehicleType,
@@ -175,18 +175,20 @@ private fun ActiveSessionItem(
 
                 Spacer(modifier = Modifier.width(14.dp))
 
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = session.vehicleNumber,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Slot: ${session.slotCode} • In: ${timeFormatter.format(Date(session.inTime))}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        maxLines = 1
                     )
                 }
             }

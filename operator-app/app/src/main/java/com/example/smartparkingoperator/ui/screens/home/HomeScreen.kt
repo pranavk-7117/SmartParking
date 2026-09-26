@@ -34,13 +34,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.smartparkingoperator.data.network.ConnectivityObserver
 import com.example.smartparkingoperator.data.repository.AuthRepository
@@ -82,6 +86,17 @@ fun HomeScreen(
 
     val timeFormatter = SimpleDateFormat("hh:mm a, dd MMM", Locale.getDefault())
 
+    // Real-time synchronization loop: push pending actions and fetch updated slot counts every 5 seconds
+    LaunchedEffect(Unit) {
+        while (true) {
+            try {
+                parkingRepository.syncPendingActions()
+                parkingRepository.refreshLocationAndRates()
+            } catch (_: Exception) {}
+            delay(5000)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -98,12 +113,13 @@ fun HomeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Welcome, ${authRepository.getOperatorUsername()}",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    color = TextPrimary,
+                    maxLines = 1
                 )
                 Text(
                     text = if (isOnline) "Connected to server" else "Working offline",
@@ -113,7 +129,10 @@ fun HomeScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = {
-                    coroutineScope.launch { parkingRepository.refreshLocationAndRates() }
+                    coroutineScope.launch {
+                        parkingRepository.syncPendingActions()
+                        parkingRepository.refreshLocationAndRates()
+                    }
                 }) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
@@ -183,7 +202,10 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.LocationOn,
                                     contentDescription = null,
@@ -195,9 +217,12 @@ fun HomeScreen(
                                     text = assignedLoc.name,
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
                             StatusBadge(
                                 text = assignedLoc.code,
                                 statusType = BadgeStatusType.SUCCESS
@@ -369,7 +394,7 @@ private fun AvailabilityCountCard(
         modifier = modifier.border(1.dp, BorderDivider, RoundedCornerShape(10.dp))
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
@@ -378,17 +403,20 @@ private fun AvailabilityCountCard(
                 tint = PrimaryAccent,
                 modifier = Modifier.size(22.dp)
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "$count",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (count > 0) StatusSuccess else StatusWarning
             )
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelMedium,
-                color = TextSecondary
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
     }

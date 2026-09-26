@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PrismaClient, VehicleType, SlotStatus } from '@prisma/client';
+import { VehicleType, SlotStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 export const sitesRouter = Router();
 
 const createSiteSchema = z.object({

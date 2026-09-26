@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { PrismaClient, VehicleType, SlotStatus } from '@prisma/client';
+import { VehicleType, SlotStatus } from '@prisma/client';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 export const displayRouter = Router();
 
 /**

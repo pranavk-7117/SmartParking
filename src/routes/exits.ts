@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PrismaClient, SlotStatus, SessionStatus } from '@prisma/client';
+import { SlotStatus, SessionStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 export const exitsRouter = Router();
 
 const exitSchema = z.object({

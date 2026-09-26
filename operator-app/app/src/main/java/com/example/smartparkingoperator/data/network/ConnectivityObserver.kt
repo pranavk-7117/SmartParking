@@ -18,8 +18,14 @@ class ConnectivityObserver(private val context: Context) {
     fun isConnected(): Boolean {
         val activeNetwork = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        // NET_CAPABILITY_VALIDATED requires confirmed internet (Google ping) — too strict for
+        // a local-network deployment where the backend is on the same LAN without internet.
+        // We just need any active WiFi or cellular connection.
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_USB))
     }
 
     fun observe(): Flow<Boolean> = callbackFlow {

@@ -90,7 +90,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
             { /* Site Switcher Popover */ }
             {isSiteDropdownOpen && (
-              <div className="absolute left-0 top-full mt-2 w-80 bg-white rounded-card shadow-modal border border-neutral-200 py-1.5 z-50 animate-scale-up">
+              <div className="absolute left-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 bg-white rounded-card shadow-modal border border-neutral-200 py-1.5 z-50 animate-scale-up">
                 <div className="px-3 py-2 border-b border-neutral-100 flex items-center justify-between">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Select Site View</p>
                   <span className="text-[10px] font-medium text-neutral-400">{sites.length} Sites</span>
@@ -186,26 +186,25 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
         </div>
 
-        { /* Center: Clickable Site Name -> Site Details Page per§3.2.3 */ }
-        <div className="flex items-center justify-center">
+        { /* Center: Clickable Site Name -> Site Details Page per §3.2.3 (hidden on small screens to prevent topbar overflow) */ }
+        <div className="hidden md:flex items-center justify-center">
           <Link
             to={`/sites/${currentSiteId}`}
             className="flex items-center gap-2 px-3.5 py-1.5 rounded-control bg-neutral-100/80 hover:bg-blue-50 border border-neutral-200/80 hover:border-primary/30 transition-all text-neutral-800 hover:text-primary group"
             title="View Site Details"
           >
             <MapPin className="w-4 h-4 text-primary shrink-0" />
-            <span className="text-xs font-bold truncate max-w-[200px] sm:max-w-none">
+            <span className="text-xs font-bold truncate max-w-[200px] lg:max-w-none">
               {currentSite.name}
             </span>
-            <span className="text-[11px] text-neutral-400 group-hover:text-primary/70 transition-colors font-medium hidden sm:inline">
+            <span className="text-[11px] text-neutral-400 group-hover:text-primary/70 transition-colors font-medium hidden lg:inline">
               (View Site Details →)
             </span>
           </Link>
         </div>
 
-
         { /* Right: Manual Sync Refresh + Capacity Summary */ }
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={refresh}

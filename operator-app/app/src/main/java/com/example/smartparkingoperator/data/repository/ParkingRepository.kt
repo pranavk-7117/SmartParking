@@ -137,6 +137,15 @@ class ParkingRepository(
             )
             database.pendingActionDao().insertAction(pendingAction)
 
+            // Immediately trigger sync to backend if online
+            if (!isOffline) {
+                try {
+                    syncPendingActions()
+                } catch (_: Exception) {
+                    // Fail safely; action remains in Room outbox
+                }
+            }
+
             Result.success(sessionEntity)
         } catch (e: Exception) {
             Result.failure(e)
@@ -213,6 +222,15 @@ class ParkingRepository(
                 createdAt = now
             )
             database.pendingActionDao().insertAction(pendingAction)
+
+            // Immediately trigger sync to backend if online
+            if (!isOffline) {
+                try {
+                    syncPendingActions()
+                } catch (_: Exception) {
+                    // Fail safely; action remains in Room outbox
+                }
+            }
 
             Result.success(receipt)
         } catch (e: Exception) {
@@ -304,7 +322,7 @@ class ParkingRepository(
     // -------------------------------------------------------------
 
     suspend fun syncPendingActions(): Boolean = withContext(Dispatchers.IO) {
-        if (!connectivityObserver.isConnected() || !sessionManager.isLoggedIn()) return@withContext false
+        if (!sessionManager.isLoggedIn()) return@withContext false
 
         val pendingList = database.pendingActionDao().getUnsyncedActions()
         if (pendingList.isEmpty()) {

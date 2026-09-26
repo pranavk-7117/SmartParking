@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { PrismaClient, VehicleType } from '@prisma/client';
+import { VehicleType } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 export const ratesRouter = Router();
 
 async function resolveLocationId(siteIdentifier?: string): Promise<string | undefined> {

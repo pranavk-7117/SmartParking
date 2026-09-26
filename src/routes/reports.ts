@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { PrismaClient, VehicleType, SessionStatus } from '@prisma/client';
+import { VehicleType, SessionStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
+import prisma from '../lib/prisma';
 
-const prisma = new PrismaClient();
 export const reportsRouter = Router();
 
 async function resolveLocationId(siteIdentifier?: string): Promise<string | undefined> {

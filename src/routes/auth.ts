@@ -2,10 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 export const authRouter = Router();
 
 const loginSchema = z.object({

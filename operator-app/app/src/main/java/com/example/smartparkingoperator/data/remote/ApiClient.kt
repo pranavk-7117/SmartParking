@@ -10,8 +10,8 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    // Default emulator loopback to host development server
-    private const val DEFAULT_BASE_URL = "http://10.0.2.2:3000/"
+    // LAN IP of the PC — phone and PC must be on the same WiFi network
+    private const val DEFAULT_BASE_URL = "http://192.168.2.104:3000/"
 
     fun create(sessionManager: SecureSessionManager, baseUrl: String = DEFAULT_BASE_URL): ApiService {
         val authInterceptor = Interceptor { chain ->
