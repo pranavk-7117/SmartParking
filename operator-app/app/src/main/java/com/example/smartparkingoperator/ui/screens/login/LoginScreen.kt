@@ -1,20 +1,20 @@
 package com.example.smartparkingoperator.ui.screens.login
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalParking
 import androidx.compose.material.icons.filled.Lock
@@ -36,7 +36,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -87,148 +86,156 @@ fun LoginScreen(
         }
     }
 
-    Box(
+    // imePadding() on the outer Column shrinks the composable's height when the
+    // soft keyboard appears, verticalScroll then lets the user scroll up to the
+    // login button. The paired weight(1f) Spacers keep the form centred when
+    // the keyboard is hidden.
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(AppBackground)
-            .padding(24.dp)
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
+        // Top flexible spacer — pushes content toward centre when no keyboard
+        Spacer(modifier = Modifier.weight(1f))
+
+        // ── Header ───────────────────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(PrimaryAccent.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.LocalParking,
+                contentDescription = null,
+                tint = PrimaryAccent,
+                modifier = Modifier.size(36.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Smart Parking",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+
+        Text(
+            text = "Operator Gate Portal",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // ── Username ─────────────────────────────────────────────────────────
+        OutlinedTextField(
+            value = username,
+            onValueChange = {
+                username = it
+                errorMessage = null
+            },
+            label = { Text("Username") },
+            leadingIcon = {
+                Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = TextSecondary)
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Next
+            ),
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = PrimaryAccent,
+                unfocusedBorderColor = BorderDivider,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary
+            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.Center)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            // Header Icon & Title
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .background(PrimaryAccent.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocalParking,
-                    contentDescription = null,
-                    tint = PrimaryAccent,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
+                .height(56.dp)
+        )
 
-            Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // ── Password ─────────────────────────────────────────────────────────
+        OutlinedTextField(
+            value = password,
+            onValueChange = {
+                password = it
+                errorMessage = null
+            },
+            label = { Text("Password") },
+            leadingIcon = {
+                Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = TextSecondary)
+            },
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        tint = TextSecondary
+                    )
+                }
+            },
+            singleLine = true,
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { handleLogin() }
+            ),
+            shape = RoundedCornerShape(10.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = PrimaryAccent,
+                unfocusedBorderColor = BorderDivider,
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        )
+
+        // Error message
+        if (errorMessage != null) {
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Smart Parking",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-
-            Text(
-                text = "Operator Gate Portal",
+                text = errorMessage!!,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
+                color = StatusError,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.align(Alignment.Start)
             )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Username Field
-            OutlinedTextField(
-                value = username,
-                onValueChange = {
-                    username = it
-                    errorMessage = null
-                },
-                label = { Text("Username") },
-                leadingIcon = {
-                    Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = TextSecondary)
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Next
-                ),
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryAccent,
-                    unfocusedBorderColor = BorderDivider,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Password Field
-            OutlinedTextField(
-                value = password,
-                onValueChange = {
-                    password = it
-                    errorMessage = null
-                },
-                label = { Text("Password") },
-                leadingIcon = {
-                    Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = TextSecondary)
-                },
-                trailingIcon = {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(
-                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                            tint = TextSecondary
-                        )
-                    }
-                },
-                singleLine = true,
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { handleLogin() }
-                ),
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryAccent,
-                    unfocusedBorderColor = BorderDivider,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-            )
-
-            if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = errorMessage!!,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = StatusError,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Login Button (Large touch target)
-            if (isLoading) {
-                CircularProgressIndicator(
-                    color = PrimaryAccent,
-                    modifier = Modifier.size(48.dp)
-                )
-            } else {
-                AppPrimaryButton(
-                    text = "Log In",
-                    onClick = handleLogin
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // ── Login Button ─────────────────────────────────────────────────────
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = PrimaryAccent,
+                modifier = Modifier.size(48.dp)
+            )
+        } else {
+            AppPrimaryButton(
+                text = "Log In",
+                onClick = handleLogin
+            )
+        }
+
+        // Bottom flexible spacer — mirrors top to keep content centred
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Safe-area breathing room above gesture handle / nav bar
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }

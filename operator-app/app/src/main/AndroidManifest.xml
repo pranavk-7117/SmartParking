@@ -15,12 +15,12 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:windowSoftInputMode="adjustResize"
         android:theme="@style/Theme.SmartParkingOperator">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
