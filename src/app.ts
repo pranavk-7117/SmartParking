@@ -31,6 +31,13 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ── Download Operator App APK ────────────────────────────────────────────────
+app.get('/download/operator-app.apk', (_req, res) => {
+  const path = require('path');
+  const apkPath = path.resolve(__dirname, '../operator-app.apk');
+  res.download(apkPath, 'smart-parking-operator.apk');
+});
+
 // ── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/me', meRouter);
