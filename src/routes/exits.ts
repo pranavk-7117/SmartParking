@@ -84,8 +84,15 @@ exitsRouter.post('/', requireAuth, async (req, res, next) => {
         vehicleType: session.vehicle.vehicleType,
       },
     });
-    const ratePerHour = rateRow ? parseFloat(rateRow.ratePerHour.toString()) : 0;
-    const amount      = durationHours * ratePerHour;
+    let ratePerHour = rateRow ? parseFloat(rateRow.ratePerHour.toString()) : 0;
+    if (!ratePerHour) {
+      const loc = session.slot.location ?? (await prisma.location.findUnique({ where: { id: session.slot.locationId } }));
+      const isCar = session.vehicle.vehicleType === VehicleType.CAR;
+      ratePerHour = isCar
+        ? (loc?.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30)
+        : (loc?.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 15);
+    }
+    const amount = durationHours * ratePerHour;
 
     // ── Atomic Transaction ──────────────────────────────────────────────────
     const bill = await prisma.$transaction(async (tx) => {

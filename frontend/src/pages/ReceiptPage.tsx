@@ -5,6 +5,29 @@ import { useLiveData } from '../context/LiveDataContext';
 import { Button } from '../components/common/Button';
 import { EmptyState } from '../components/common/EmptyState';
 
+function formatDisplayDate(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatDisplayTime(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+}
+
 export const ReceiptPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -33,9 +56,9 @@ export const ReceiptPage: React.FC = () => {
   }
 
   // Find site record
-  const sessionSite = sites.find((s) => s.id === session.siteId) || currentSite;
-  const siteAddress = sessionSite?.address || 'Hadapsar Industrial Estate, Bypass Rd, Pune 411028';
-  const siteName = sessionSite?.name || 'AeroPark Facility';
+  const sessionSite = sites.find((s) => s.id === session.siteId || s.code === session.siteId) || currentSite;
+  const siteAddress = sessionSite?.address || 'Smart Parking Automated Facility';
+  const siteName = sessionSite?.name || 'Smart Parking Hub';
 
   // Duration display
   const durationMins = session.durationMinutes ?? 0;
@@ -45,15 +68,18 @@ export const ReceiptPage: React.FC = () => {
 
   const hourlyRate = session.rateApplied || (session.category === 'Car' ? 30 : 15);
 
-  // Proportional billing: (duration / 60) * hourlyRate
+  // Billing amount: use stored bill amount, or compute hourly ceiling
+  const durationHours = Math.max(1, Math.ceil(durationMins / 60));
   const computedAmount =
-    session.amount !== undefined && session.amount !== null
+    session.amount !== undefined && session.amount !== null && session.amount > 0
       ? session.amount.toFixed(2)
-      : ((durationMins / 60) * hourlyRate).toFixed(2);
+      : (durationHours * hourlyRate).toFixed(2);
 
   const handlePrint = () => {
     window.print();
   };
+
+  const ticketCode = `PK-${session.id.slice(0, 8).toUpperCase()}`;
 
   return (
     <div className="space-y-6 max-w-xl mx-auto">
@@ -102,40 +128,42 @@ export const ReceiptPage: React.FC = () => {
           </div>
 
           {/* Line items */}
-          <div className="py-4 space-y-2 border-b border-dashed border-neutral-300 leading-relaxed text-[12px]">
-            <div className="flex justify-between">
+          <div className="py-4 space-y-2.5 border-b border-dashed border-neutral-300 leading-relaxed text-[12px]">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Ticket ID:</span>
-              <span className="font-bold">{session.id}</span>
+              <span className="font-bold font-mono tracking-wide text-neutral-950" title={session.id}>
+                {ticketCode}
+              </span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Vehicle No:</span>
               <span className="font-bold text-neutral-950">{session.vehicleNumber}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Category:</span>
               <span>{session.category}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Slot Allocated:</span>
               <span className="font-bold">{session.slotId}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Date:</span>
-              <span>04-Sep-2026</span>
+              <span className="font-semibold">{formatDisplayDate(session.inTime)}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">In-Time:</span>
-              <span>{session.inTime}</span>
+              <span>{formatDisplayTime(session.inTime)}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Out-Time:</span>
-              <span>{session.outTime || 'Currently Parked'}</span>
+              <span>{session.outTime ? formatDisplayTime(session.outTime) : 'Currently Parked'}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Duration:</span>
               <span>{formattedDuration}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-neutral-500">Hourly Rate:</span>
               <span>₹{hourlyRate}/hr</span>
             </div>
