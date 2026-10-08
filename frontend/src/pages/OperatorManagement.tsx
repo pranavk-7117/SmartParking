@@ -38,8 +38,10 @@ export const OperatorManagement: React.FC = () => {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [contact, setContact] = useState('');
+  const [password, setPassword] = useState('');
+  const [addEmail, setAddEmail] = useState('');
   const [assignedSiteId, setAssignedSiteId] = useState(sites[0]?.id || 'site-hadapsar');
-  const [addErrors, setAddErrors] = useState<{ name?: string; username?: string; contact?: string }>({});
+  const [addErrors, setAddErrors] = useState<{ name?: string; username?: string; contact?: string; password?: string }>({});
 
   // Reassign Site Modal State
   const [reassigningOperator, setReassigningOperator] = useState<OperatorAccount | null>(null);
@@ -66,11 +68,12 @@ export const OperatorManagement: React.FC = () => {
 
   const handleCreateOperator = (e: React.FormEvent) => {
     e.preventDefault();
-    const errors: { name?: string; username?: string; contact?: string } = {};
+    const errors: { name?: string; username?: string; contact?: string; password?: string } = {};
 
     if (!name.trim()) errors.name = 'Full name is required.';
-    if (!username.trim()) errors.username = 'Google email / username is required.';
+    if (!username.trim()) errors.username = 'Username is required.';
     if (!contact.trim()) errors.contact = 'Contact phone number is required.';
+    if (!password.trim() || password.length < 6) errors.password = 'Password must be at least 6 characters.';
 
     if (Object.keys(errors).length > 0) {
       setAddErrors(errors);
@@ -81,6 +84,8 @@ export const OperatorManagement: React.FC = () => {
       name: name.trim(),
       username: username.trim(),
       contact: contact.trim(),
+      password: password.trim(),
+      email: addEmail.trim() || undefined,
       assignedSiteId,
     });
 
@@ -89,6 +94,8 @@ export const OperatorManagement: React.FC = () => {
     setName('');
     setUsername('');
     setContact('');
+    setPassword('');
+    setAddEmail('');
     setAddErrors({});
   };
 
@@ -304,7 +311,7 @@ export const OperatorManagement: React.FC = () => {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         title="Add New Operator"
-        description="Register a new on-ground operator and allocate initial site assignment"
+        description="Set credentials and assign a site — the operator can update their profile later from the app"
       >
         <form onSubmit={handleCreateOperator} className="space-y-4">
           <Input
@@ -317,12 +324,21 @@ export const OperatorManagement: React.FC = () => {
           />
 
           <Input
-            label="Google Account / Email"
-            type="email"
-            placeholder="e.g. anand.kulkarni@gmail.com"
+            label="Username"
+            placeholder="e.g. anand.kulkarni"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             error={addErrors.username}
+            required
+          />
+
+          <Input
+            label="Password"
+            type="password"
+            placeholder="Minimum 6 characters"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={addErrors.password}
             required
           />
 
@@ -335,6 +351,14 @@ export const OperatorManagement: React.FC = () => {
             required
           />
 
+          <Input
+            label="Email (Optional)"
+            type="email"
+            placeholder="e.g. anand.kulkarni@gmail.com"
+            value={addEmail}
+            onChange={(e) => setAddEmail(e.target.value)}
+          />
+
           <Select
             label="Initial Assigned Site"
             value={assignedSiteId}
@@ -342,12 +366,12 @@ export const OperatorManagement: React.FC = () => {
             options={siteOptions}
           />
 
-          {/* §3.9.2 Helper Note */}
+          {/* Helper Note */}
           <div className="p-3 bg-blue-50/80 rounded-control border border-blue-200 flex items-start gap-2.5 text-xs text-blue-800">
             <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              Operator will verify identity via Google Account sign-in on their native Android device.
-              Additional verification (e.g., Aadhaar ID) may be added pending client confirmation.
+              The operator will use the <strong>username</strong> and <strong>password</strong> you set here to log in to the Android app.
+              They can update their profile, change their password, and add personal details from the app's Settings screen.
             </p>
           </div>
 

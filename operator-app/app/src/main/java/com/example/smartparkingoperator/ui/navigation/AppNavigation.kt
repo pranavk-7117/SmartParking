@@ -14,6 +14,7 @@ import com.example.smartparkingoperator.ui.screens.exit.CaptureExitScreen
 import com.example.smartparkingoperator.ui.screens.home.HomeScreen
 import com.example.smartparkingoperator.ui.screens.login.LoginScreen
 import com.example.smartparkingoperator.ui.screens.sessions.ActiveSessionsScreen
+import com.example.smartparkingoperator.ui.screens.settings.SettingsScreen
 
 object Destinations {
     const val LOGIN = "login"
@@ -21,6 +22,7 @@ object Destinations {
     const val ENTRY = "entry"
     const val EXIT = "exit?sessionId={sessionId}"
     const val SESSIONS = "sessions"
+    const val SETTINGS = "settings"
 
     fun exitWithSession(sessionId: String? = null): String =
         if (sessionId.isNullOrBlank()) "exit?sessionId=" else "exit?sessionId=$sessionId"
@@ -62,6 +64,7 @@ fun AppNavigation(
                 onNavigateToEntry = { navController.navigate(Destinations.ENTRY) },
                 onNavigateToExit = { navController.navigate(Destinations.exitWithSession()) },
                 onNavigateToSessions = { navController.navigate(Destinations.SESSIONS) },
+                onNavigateToSettings = { navController.navigate(Destinations.SETTINGS) },
                 onLogout = {
                     container.authRepository.logout()
                     navController.navigate(Destinations.LOGIN) {
@@ -105,5 +108,20 @@ fun AppNavigation(
                 }
             )
         }
+
+        composable(Destinations.SETTINGS) {
+            SettingsScreen(
+                authRepository = container.authRepository,
+                parkingRepository = container.parkingRepository,
+                onNavigateBack = { navController.popBackStack() },
+                onLogout = {
+                    container.authRepository.logout()
+                    navController.navigate(Destinations.LOGIN) {
+                        popUpTo(Destinations.HOME) { inclusive = true }
+                    }
+                }
+            )
+        }
     }
 }
+

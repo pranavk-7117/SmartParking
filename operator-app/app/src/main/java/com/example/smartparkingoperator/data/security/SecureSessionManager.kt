@@ -40,6 +40,10 @@ class SecureSessionManager(context: Context) {
 
     fun getOperatorRole(): String? = sharedPreferences.getString(KEY_OPERATOR_ROLE, null)
 
+    fun saveOperatorUsername(username: String) {
+        sharedPreferences.edit().putString(KEY_OPERATOR_USERNAME, username).apply()
+    }
+
     fun isLoggedIn(): Boolean = !getAuthToken().isNullOrBlank()
 
     fun clearSession() {

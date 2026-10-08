@@ -92,6 +92,10 @@ interface ApiOperator {
   name: string;
   username: string;
   contact: string;
+  email?: string;
+  employeeId?: string;
+  shiftTime?: string;
+  notes?: string;
   assignedSiteId: string;
   assignedSiteName: string;
   status: string;
@@ -191,10 +195,14 @@ function mapOperator(a: ApiOperator): OperatorAccount {
     name: a.name,
     username: a.username,
     contact: a.contact,
+    email: a.email ?? '',
+    employeeId: a.employeeId ?? '',
+    shiftTime: a.shiftTime ?? 'General Shift',
+    notes: a.notes ?? '',
     assignedSiteId: a.assignedSiteId,
     status: a.status === 'Active' ? 'Active' : 'Terminated',
     dateAdded: a.dateAdded,
-    authMethod: 'Google Account Linked',
+    authMethod: a.authMethod ?? 'Password',
     sessionsProcessedCount: a.sessionsProcessedCount,
     reassignmentHistory: (a.reassignmentHistory ?? []).map((r) => ({
       id: r.id,
@@ -241,7 +249,8 @@ interface LiveDataContextType {
   reassignSlotCategory: (slotId: string, newCategory: VehicleCategory) => void;
   addSlot: (slot: Omit<ParkingSlot, 'currentVehicleNumber' | 'currentSessionId'>) => boolean;
   updateRate: (category: VehicleCategory, newRate: number, adminName: string) => void;
-  addOperator: (operatorData: { name: string; username: string; contact: string; assignedSiteId: string }) => void;
+  addOperator: (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => void;
+  updateOperator: (operatorId: string, data: Partial<{ name: string; contact: string; email: string; employeeId: string; shiftTime: string; notes: string; password: string }>) => Promise<void>;
   reassignOperatorSite: (operatorId: string, newSiteId: string, reason?: string) => void;
   terminateOperator: (operatorId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
@@ -597,7 +606,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   );
 
   const addOperator = useCallback(
-    (operatorData: { name: string; username: string; contact: string; assignedSiteId: string }) => {
+    (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => {
       api
         .post<ApiOperator>('/operators', operatorData)
         .then((created) => {
@@ -605,6 +614,15 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
           triggerFlash();
         })
         .catch((err) => console.error('[LiveData] addOperator failed:', err));
+    },
+    [triggerFlash]
+  );
+
+  const updateOperator = useCallback(
+    async (operatorId: string, data: Partial<{ name: string; contact: string; email: string; employeeId: string; shiftTime: string; notes: string; password: string }>) => {
+      const updated = await api.put<ApiOperator>(`/operators/${operatorId}`, data);
+      setOperators((prev) => prev.map((op) => (op.id === operatorId ? mapOperator(updated) : op)));
+      triggerFlash();
     },
     [triggerFlash]
   );
@@ -728,6 +746,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
         addSlot,
         updateRate,
         addOperator,
+        updateOperator,
         reassignOperatorSite,
         terminateOperator,
         deleteSession,

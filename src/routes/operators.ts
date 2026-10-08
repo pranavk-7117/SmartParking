@@ -50,6 +50,10 @@ function formatOperator(op: OperatorWithRelations) {
     name: op.name ?? op.username,
     username: op.username,
     contact: op.contact ?? '+91 98000 00000',
+    email: op.email ?? '',
+    employeeId: op.employeeId ?? '',
+    shiftTime: op.shiftTime ?? 'General Shift',
+    notes: op.notes ?? '',
     assignedSiteId: op.location?.code ?? '',
     assignedSiteName: op.location?.name ?? 'Unassigned',
     status: op.status,
@@ -136,7 +140,11 @@ operatorsRouter.post('/', requireAuth, async (req, res, next) => {
       username: z.string().min(3),
       contact: z.string().min(8),
       assignedSiteId: z.string().min(1),
-      password: z.string().optional().default('Operator@123'),
+      password: z.string().min(6).optional().default('Operator@123'),
+      email: z.string().optional(),
+      employeeId: z.string().optional(),
+      shiftTime: z.string().optional(),
+      notes: z.string().optional(),
     });
 
     const body = schema.parse(req.body);
@@ -150,32 +158,77 @@ operatorsRouter.post('/', requireAuth, async (req, res, next) => {
         username: body.username.trim().toLowerCase(),
         name: body.name.trim(),
         contact: body.contact.trim(),
+        email: body.email?.trim() || null,
+        employeeId: body.employeeId?.trim() || null,
+        shiftTime: body.shiftTime?.trim() || null,
+        notes: body.notes?.trim() || null,
         passwordHash,
         role: AdminRole.OPERATOR,
         status: 'Active',
         authMethod: 'Password',
         locationId,
       },
-      include: { location: true },
+      include: {
+        location: true,
+        reassignments: {
+          include: { fromLocation: true, toLocation: true },
+          orderBy: { reassignedAt: 'desc' },
+        },
+      },
     });
 
-    res.status(201).json({
-      id: op.id,
-      name: op.name,
-      username: op.username,
-      contact: op.contact,
-      assignedSiteId: op.location?.code ?? body.assignedSiteId,
-      assignedSiteName: op.location?.name ?? '',
-      status: op.status,
-      dateAdded: op.createdAt.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      }),
-      authMethod: op.authMethod,
-      sessionsProcessedCount: 0,
-      reassignmentHistory: [],
+    res.status(201).json(formatOperator(op as OperatorWithRelations));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /api/v1/operators/:id
+ * Admin updates operator profile or resets password
+ */
+operatorsRouter.put('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const op = await findOperator(id);
+    if (!op) throw new AppError('Operator not found', 404);
+
+    const schema = z.object({
+      name: z.string().min(1).optional(),
+      contact: z.string().optional(),
+      email: z.string().optional(),
+      employeeId: z.string().optional(),
+      shiftTime: z.string().optional(),
+      notes: z.string().optional(),
+      password: z.string().min(6).optional(),
     });
+
+    const body = schema.parse(req.body);
+    const updateData: Record<string, unknown> = {};
+
+    if (body.name !== undefined) updateData.name = body.name.trim();
+    if (body.contact !== undefined) updateData.contact = body.contact.trim();
+    if (body.email !== undefined) updateData.email = body.email.trim();
+    if (body.employeeId !== undefined) updateData.employeeId = body.employeeId.trim();
+    if (body.shiftTime !== undefined) updateData.shiftTime = body.shiftTime.trim();
+    if (body.notes !== undefined) updateData.notes = body.notes.trim();
+    if (body.password) {
+      updateData.passwordHash = await bcrypt.hash(body.password, 10);
+    }
+
+    const updated = await prisma.adminUser.update({
+      where: { id: op.id },
+      data: updateData,
+      include: {
+        location: true,
+        reassignments: {
+          include: { fromLocation: true, toLocation: true },
+          orderBy: { reassignedAt: 'desc' },
+        },
+      },
+    });
+
+    res.json(formatOperator(updated as OperatorWithRelations));
   } catch (err) {
     next(err);
   }

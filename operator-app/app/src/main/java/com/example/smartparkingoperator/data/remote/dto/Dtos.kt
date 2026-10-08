@@ -90,3 +90,38 @@ data class ExitResponseDto(
     @SerializedName("generated_on") val generatedOn: String,
     @SerializedName("operator_id") val operatorId: String
 )
+
+data class OperatorProfileDto(
+    @SerializedName("id") val id: String?,
+    @SerializedName("name") val name: String?,
+    @SerializedName("username") val username: String?,
+    @SerializedName("contact") val contact: String?,
+    @SerializedName("email") val email: String?,
+    @SerializedName("employee_id") val employeeId: String?,
+    @SerializedName("shift_time") val shiftTime: String?,
+    @SerializedName("notes") val notes: String?,
+    @SerializedName("role") val role: String?,
+    @SerializedName("location_name") val locationName: String?,
+    @SerializedName("sessions_processed_count") val sessionsProcessedCount: Int?,
+    @SerializedName("date_added") val dateAdded: String?
+)
+
+data class UpdateProfileRequest(
+    @SerializedName("name") val name: String?,
+    @SerializedName("username") val username: String?,
+    @SerializedName("contact") val contact: String?,
+    @SerializedName("email") val email: String?,
+    @SerializedName("employee_id") val employeeId: String?,
+    @SerializedName("shift_time") val shiftTime: String?,
+    @SerializedName("notes") val notes: String?
+)
+
+data class ChangePasswordRequest(
+    @SerializedName("current_password") val currentPassword: String,
+    @SerializedName("new_password") val newPassword: String
+)
+
+data class GenericMessageDto(
+    @SerializedName("message") val message: String?
+)
+

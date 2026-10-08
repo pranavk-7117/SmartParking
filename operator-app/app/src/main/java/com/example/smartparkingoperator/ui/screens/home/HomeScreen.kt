@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TwoWheeler
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -75,6 +76,7 @@ fun HomeScreen(
     onNavigateToEntry: () -> Unit,
     onNavigateToExit: () -> Unit,
     onNavigateToSessions: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -137,6 +139,13 @@ fun HomeScreen(
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Refresh data",
+                        tint = TextSecondary
+                    )
+                }
+                IconButton(onClick = onNavigateToSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
                         tint = TextSecondary
                     )
                 }

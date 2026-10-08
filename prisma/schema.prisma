@@ -178,6 +178,10 @@ model AdminUser {
   status                 String    @default("Active") @map("status") @db.VarChar(20)
   authMethod             String    @default("Password") @map("auth_method") @db.VarChar(50)
   sessionsProcessedCount Int       @default(0) @map("sessions_processed_count")
+  email                  String?   @map("email") @db.VarChar(100)
+  employeeId             String?   @map("employee_id") @db.VarChar(50)
+  shiftTime              String?   @map("shift_time") @db.VarChar(50)
+  notes                  String?   @map("notes") @db.VarChar(255)
   locationId             String?   @map("location_id") @db.Uuid
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 

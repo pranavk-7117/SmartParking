@@ -120,10 +120,14 @@ export interface OperatorAccount {
   name: string;
   username: string;
   contact: string;
+  email?: string;
+  employeeId?: string;
+  shiftTime?: string;
+  notes?: string;
   assignedSiteId: string;
   status: 'Active' | 'Terminated';
   dateAdded: string;
-  authMethod: 'Google Account Linked';
+  authMethod: 'Google Account Linked' | 'Password' | string;
   sessionsProcessedCount: number;
   reassignmentHistory: SiteReassignmentEvent[];
 }

@@ -2,9 +2,11 @@ package com.example.smartparkingoperator.data.repository
 
 import com.example.smartparkingoperator.data.network.ConnectivityObserver
 import com.example.smartparkingoperator.data.remote.ApiService
+import com.example.smartparkingoperator.data.remote.dto.ChangePasswordRequest
 import com.example.smartparkingoperator.data.remote.dto.LoginRequest
+import com.example.smartparkingoperator.data.remote.dto.OperatorProfileDto
+import com.example.smartparkingoperator.data.remote.dto.UpdateProfileRequest
 import com.example.smartparkingoperator.data.security.SecureSessionManager
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,6 +61,63 @@ class AuthRepository(
         }
     }
 
+    suspend fun getProfile(): OperatorProfileDto? = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getProfile()
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun updateProfile(
+        name: String?,
+        username: String?,
+        contact: String?,
+        email: String?,
+        employeeId: String?,
+        shiftTime: String?,
+        notes: String?
+    ): Result<OperatorProfileDto> = withContext(Dispatchers.IO) {
+        try {
+            val request = UpdateProfileRequest(
+                name = name?.ifBlank { null },
+                username = username?.ifBlank { null },
+                contact = contact?.ifBlank { null },
+                email = email?.ifBlank { null },
+                employeeId = employeeId?.ifBlank { null },
+                shiftTime = shiftTime?.ifBlank { null },
+                notes = notes?.ifBlank { null }
+            )
+            val response = apiService.updateProfile(request)
+            if (response.isSuccessful && response.body() != null) {
+                // Update cached username if changed
+                response.body()!!.username?.let { sessionManager.saveOperatorUsername(it) }
+                Result.success(response.body()!!)
+            } else {
+                val err = response.errorBody()?.string() ?: "Failed to update profile"
+                Result.failure(Exception(err))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(e.localizedMessage ?: "Network error"))
+        }
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val request = ChangePasswordRequest(currentPassword = currentPassword, newPassword = newPassword)
+            val response = apiService.changePassword(request)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                val err = response.errorBody()?.string() ?: "Failed to change password"
+                Result.failure(Exception(err))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(e.localizedMessage ?: "Network error"))
+        }
+    }
+
     fun isLoggedIn(): Boolean = sessionManager.isLoggedIn()
 
     fun getOperatorUsername(): String = sessionManager.getOperatorUsername() ?: "Operator"
@@ -72,3 +131,4 @@ class AuthRepository(
         }
     }
 }
+
