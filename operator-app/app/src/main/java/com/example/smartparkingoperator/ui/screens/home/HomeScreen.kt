@@ -140,12 +140,12 @@ fun HomeScreen(
         }
     }
 
-    val carVacant = availability?.carVacant ?: 30
-    val carTotal = 40
-    val scooterVacant = availability?.scooterVacant ?: 15
-    val scooterTotal = 20
+    val carVacant = availability?.carVacant ?: 0
+    val carTotal = availability?.carTotal ?: ((availability?.carVacant ?: 0) + (availability?.carOccupied ?: 0))
+    val scooterVacant = availability?.scooterVacant ?: 0
+    val scooterTotal = availability?.scooterTotal ?: ((availability?.scooterVacant ?: 0) + (availability?.scooterOccupied ?: 0))
     val totalVacant = availability?.totalVacant ?: (carVacant + scooterVacant)
-    val totalSlots = 60
+    val totalSlots = availability?.totalSlots ?: (carTotal + scooterTotal)
 
     val currencyFormat = NumberFormat.getNumberInstance(Locale.US)
 

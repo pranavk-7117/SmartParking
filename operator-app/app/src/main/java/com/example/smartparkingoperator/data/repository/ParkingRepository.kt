@@ -270,15 +270,21 @@ class ParkingRepository(
                 val availRes = apiService.getSlotAvailability(dto.locationId)
                 if (availRes.isSuccessful && availRes.body() != null) {
                     val aDto = availRes.body()!!
+                    val carTot = aDto.carTotal ?: (aDto.carVacant + aDto.carOccupied)
+                    val scotTot = aDto.scooterTotal ?: (aDto.scooterVacant + aDto.scooterOccupied)
+                    val totSlots = aDto.totalSlots ?: (carTot + scotTot)
                     database.availabilityDao().replaceAvailability(
                         SlotAvailabilityEntity(
                             locationId = aDto.locationId,
                             carVacant = aDto.carVacant,
                             carOccupied = aDto.carOccupied,
+                            carTotal = carTot,
                             scooterVacant = aDto.scooterVacant,
                             scooterOccupied = aDto.scooterOccupied,
+                            scooterTotal = scotTot,
                             totalVacant = aDto.totalVacant,
                             totalOccupied = aDto.totalOccupied,
+                            totalSlots = totSlots,
                             lastUpdated = System.currentTimeMillis()
                         )
                     )

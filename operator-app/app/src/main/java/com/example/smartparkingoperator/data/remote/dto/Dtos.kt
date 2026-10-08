@@ -25,10 +25,13 @@ data class AvailabilityDto(
     @SerializedName("location_id") val locationId: String,
     @SerializedName("car_vacant") val carVacant: Int,
     @SerializedName("car_occupied") val carOccupied: Int,
+    @SerializedName("car_total") val carTotal: Int? = null,
     @SerializedName("scooter_vacant") val scooterVacant: Int,
     @SerializedName("scooter_occupied") val scooterOccupied: Int,
+    @SerializedName("scooter_total") val scooterTotal: Int? = null,
     @SerializedName("total_vacant") val totalVacant: Int,
-    @SerializedName("total_occupied") val totalOccupied: Int
+    @SerializedName("total_occupied") val totalOccupied: Int,
+    @SerializedName("total_slots") val totalSlots: Int? = null
 )
 
 data class RateDto(
@@ -111,14 +114,18 @@ data class UpdateProfileRequest(
     @SerializedName("username") val username: String?,
     @SerializedName("contact") val contact: String?,
     @SerializedName("email") val email: String?,
-    @SerializedName("employee_id") val employeeId: String?,
-    @SerializedName("shift_time") val shiftTime: String?,
+    @SerializedName("employeeId") val employeeId: String?,
+    @SerializedName("employee_id") val employeeIdSnake: String? = employeeId,
+    @SerializedName("shiftTime") val shiftTime: String?,
+    @SerializedName("shift_time") val shiftTimeSnake: String? = shiftTime,
     @SerializedName("notes") val notes: String?
 )
 
 data class ChangePasswordRequest(
-    @SerializedName("current_password") val currentPassword: String,
-    @SerializedName("new_password") val newPassword: String
+    @SerializedName("currentPassword") val currentPassword: String,
+    @SerializedName("newPassword") val newPassword: String,
+    @SerializedName("current_password") val currentPasswordSnake: String = currentPassword,
+    @SerializedName("new_password") val newPasswordSnake: String = newPassword
 )
 
 data class GenericMessageDto(

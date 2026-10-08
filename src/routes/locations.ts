@@ -39,14 +39,21 @@ locationsRouter.get('/:id/availability', requireAuth, async (req, res, next) => 
     const scooterVacant   = countMap[VehicleType.SCOOTER]?.[SlotStatus.VACANT]   ?? 0;
     const scooterOccupied = countMap[VehicleType.SCOOTER]?.[SlotStatus.OCCUPIED] ?? 0;
 
+    const carTotal = (carVacant + carOccupied) || location.totalCarSlots || 0;
+    const scooterTotal = (scooterVacant + scooterOccupied) || location.totalScooterSlots || 0;
+    const totalSlots = carTotal + scooterTotal;
+
     res.json({
       location_id:      id,
       car_vacant:       carVacant,
       car_occupied:     carOccupied,
+      car_total:        carTotal,
       scooter_vacant:   scooterVacant,
       scooter_occupied: scooterOccupied,
+      scooter_total:    scooterTotal,
       total_vacant:     carVacant + scooterVacant,
       total_occupied:   carOccupied + scooterOccupied,
+      total_slots:      totalSlots,
     });
   } catch (err) {
     next(err);

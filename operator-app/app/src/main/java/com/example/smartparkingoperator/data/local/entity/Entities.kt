@@ -17,10 +17,13 @@ data class SlotAvailabilityEntity(
     @PrimaryKey val locationId: String,
     val carVacant: Int,
     val carOccupied: Int,
+    val carTotal: Int = carVacant + carOccupied,
     val scooterVacant: Int,
     val scooterOccupied: Int,
+    val scooterTotal: Int = scooterVacant + scooterOccupied,
     val totalVacant: Int,
     val totalOccupied: Int,
+    val totalSlots: Int = totalVacant + totalOccupied,
     val lastUpdated: Long = System.currentTimeMillis()
 )
 

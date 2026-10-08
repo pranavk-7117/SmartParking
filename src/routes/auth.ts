@@ -172,11 +172,15 @@ authRouter.put('/profile', requireAuth, async (req, res, next) => {
       contact: z.string().optional(),
       email: z.string().email().optional().or(z.literal('')),
       employeeId: z.string().optional(),
+      employee_id: z.string().optional(),
       shiftTime: z.string().optional(),
+      shift_time: z.string().optional(),
       notes: z.string().optional(),
     });
 
     const body = schema.parse(req.body);
+    const resolvedEmployeeId = body.employeeId !== undefined ? body.employeeId : body.employee_id;
+    const resolvedShiftTime = body.shiftTime !== undefined ? body.shiftTime : body.shift_time;
 
     // If username is changing, verify uniqueness
     if (body.username) {
@@ -201,8 +205,8 @@ authRouter.put('/profile', requireAuth, async (req, res, next) => {
         ...(body.username !== undefined ? { username: body.username.trim().toLowerCase() } : {}),
         ...(body.contact !== undefined ? { contact: body.contact.trim() } : {}),
         ...(body.email !== undefined ? { email: body.email.trim() } : {}),
-        ...(body.employeeId !== undefined ? { employeeId: body.employeeId.trim() } : {}),
-        ...(body.shiftTime !== undefined ? { shiftTime: body.shiftTime.trim() } : {}),
+        ...(resolvedEmployeeId !== undefined ? { employeeId: resolvedEmployeeId.trim() } : {}),
+        ...(resolvedShiftTime !== undefined ? { shiftTime: resolvedShiftTime.trim() } : {}),
         ...(body.notes !== undefined ? { notes: body.notes.trim() } : {}),
       },
       include: { location: true },
@@ -240,11 +244,24 @@ authRouter.post('/change-password', requireAuth, async (req, res, next) => {
   try {
     const userId = req.operator!.id;
     const schema = z.object({
-      currentPassword: z.string().min(1, 'Current password is required'),
-      newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+      currentPassword: z.string().min(1).optional(),
+      current_password: z.string().min(1).optional(),
+      newPassword: z.string().min(6).optional(),
+      new_password: z.string().min(6).optional(),
     });
 
-    const { currentPassword, newPassword } = schema.parse(req.body);
+    const body = schema.parse(req.body);
+    const currentPassword = body.currentPassword || body.current_password;
+    const newPassword = body.newPassword || body.new_password;
+
+    if (!currentPassword) {
+      res.status(400).json({ error: 'Current password is required' });
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      res.status(400).json({ error: 'New password must be at least 6 characters' });
+      return;
+    }
 
     const user = await prisma.adminUser.findUnique({
       where: { id: userId },

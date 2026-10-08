@@ -95,7 +95,8 @@ class AuthRepository(
                 response.body()!!.username?.let { sessionManager.saveOperatorUsername(it) }
                 Result.success(response.body()!!)
             } else {
-                val err = response.errorBody()?.string() ?: "Failed to update profile"
+                val rawErr = response.errorBody()?.string()
+                val err = parseErrorMessage(rawErr, "Failed to update profile")
                 Result.failure(Exception(err))
             }
         } catch (e: Exception) {
@@ -110,11 +111,49 @@ class AuthRepository(
             if (response.isSuccessful) {
                 Result.success(Unit)
             } else {
-                val err = response.errorBody()?.string() ?: "Failed to change password"
+                val rawErr = response.errorBody()?.string()
+                val err = parseErrorMessage(rawErr, "Failed to change password")
                 Result.failure(Exception(err))
             }
         } catch (e: Exception) {
             Result.failure(Exception(e.localizedMessage ?: "Network error"))
+        }
+    }
+
+    private fun parseErrorMessage(rawError: String?, fallback: String): String {
+        if (rawError.isNullOrBlank()) return fallback
+        return try {
+            val json = org.json.JSONObject(rawError)
+            when {
+                json.has("error") -> {
+                    val errVal = json.getString("error")
+                    if (json.has("details")) {
+                        val detailsArr = json.getJSONArray("details")
+                        val detailsList = mutableListOf<String>()
+                        for (i in 0 until detailsArr.length()) {
+                            val item = detailsArr.getJSONObject(i)
+                            val field = item.optString("field")
+                            val msg = item.optString("message")
+                            if (field.isNotBlank() && msg.isNotBlank()) {
+                                detailsList.add("$field: $msg")
+                            } else if (msg.isNotBlank()) {
+                                detailsList.add(msg)
+                            }
+                        }
+                        if (detailsList.isNotEmpty()) {
+                            "$errVal (${detailsList.joinToString(", ")})"
+                        } else {
+                            errVal
+                        }
+                    } else {
+                        errVal
+                    }
+                }
+                json.has("message") -> json.getString("message")
+                else -> rawError
+            }
+        } catch (_: Exception) {
+            rawError
         }
     }
 

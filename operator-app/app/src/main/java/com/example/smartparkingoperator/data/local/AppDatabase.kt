@@ -26,7 +26,7 @@ import com.example.smartparkingoperator.data.local.entity.SlotAvailabilityEntity
         PendingActionEntity::class,
         ReceiptEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
