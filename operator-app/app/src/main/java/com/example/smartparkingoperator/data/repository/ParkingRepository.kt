@@ -386,6 +386,33 @@ class ParkingRepository(
         allSuccess
     }
 
+    suspend fun getTodaySummary(): Result<com.example.smartparkingoperator.data.remote.dto.TodaySummaryDto> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getTodaySummary()
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to load today's summary: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getNotifications(): Result<List<com.example.smartparkingoperator.data.remote.dto.NotificationDto>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getNotifications()
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to load notifications: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+
     companion object {
         fun formatIsoDate(epochMs: Long): String {
             val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)

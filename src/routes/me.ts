@@ -33,3 +33,77 @@ meRouter.get('/assignment', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * GET /api/v1/me/today-summary
+ * Real live daily metrics for today (entries, exits, currently parked, revenue)
+ */
+meRouter.get('/today-summary', requireAuth, async (req, res, next) => {
+  try {
+    const operator = await prisma.adminUser.findUnique({
+      where: { id: req.operator!.id },
+      select: { locationId: true },
+    });
+
+    const locationId = operator?.locationId;
+    if (!locationId) {
+      return res.json({
+        entries: 0,
+        exits: 0,
+        currentlyParked: 0,
+        todayRevenue: 0,
+      });
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    // Entries created today
+    const entries = await prisma.parkingSession.count({
+      where: {
+        slot: { locationId },
+        inTime: { gte: startOfDay },
+      },
+    });
+
+    // Exits completed today
+    const exits = await prisma.parkingSession.count({
+      where: {
+        slot: { locationId },
+        status: 'COMPLETED',
+        outTime: { gte: startOfDay },
+      },
+    });
+
+    // Currently active parked vehicles
+    const currentlyParked = await prisma.parkingSession.count({
+      where: {
+        slot: { locationId },
+        status: 'ACTIVE',
+      },
+    });
+
+    // Revenue collected today
+    const bills = await prisma.bill.findMany({
+      where: {
+        session: {
+          slot: { locationId },
+        },
+        generatedOn: { gte: startOfDay },
+      },
+      select: { amount: true },
+    });
+
+    const todayRevenue = bills.reduce((sum, b) => sum + Number(b.amount), 0);
+
+    res.json({
+      entries,
+      exits,
+      currentlyParked,
+      todayRevenue: Math.round(todayRevenue),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+

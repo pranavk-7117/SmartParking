@@ -12,6 +12,7 @@ import { slotsRouter } from './routes/slots';
 import { operatorsRouter } from './routes/operators';
 import { reportsRouter } from './routes/reports';
 import { displayRouter } from './routes/display';
+import { notificationsRouter } from './routes/notifications';
 import { errorHandler } from './middleware/errorHandler';
 
 export const app = express();
@@ -51,6 +52,7 @@ app.use('/api/v1/reports', reportsRouter);
 app.use('/api/v1/display', displayRouter);
 app.use('/api/v1/entries', entriesRouter);
 app.use('/api/v1/exits', exitsRouter);
+app.use('/api/v1/notifications', notificationsRouter);
 
 // ── Global Error Handler (must be last) ─────────────────────────────────────
 app.use(errorHandler);

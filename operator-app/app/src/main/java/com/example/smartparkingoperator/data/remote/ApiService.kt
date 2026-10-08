@@ -70,5 +70,11 @@ interface ApiService {
     suspend fun changePassword(
         @Body request: ChangePasswordRequest
     ): Response<GenericMessageDto>
+
+    @GET("/api/v1/me/today-summary")
+    suspend fun getTodaySummary(): Response<com.example.smartparkingoperator.data.remote.dto.TodaySummaryDto>
+
+    @GET("/api/v1/notifications")
+    suspend fun getNotifications(): Response<List<com.example.smartparkingoperator.data.remote.dto.NotificationDto>>
 }
 

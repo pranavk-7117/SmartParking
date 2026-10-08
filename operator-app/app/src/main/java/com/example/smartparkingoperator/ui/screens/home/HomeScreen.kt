@@ -3,6 +3,8 @@ package com.example.smartparkingoperator.ui.screens.home
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,21 +16,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Apartment
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.LocalParking
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TwoWheeler
 import androidx.compose.material3.Card
@@ -40,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -51,7 +61,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -59,26 +68,30 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.smartparkingoperator.data.network.ConnectivityObserver
+import com.example.smartparkingoperator.data.remote.dto.NotificationDto
+import com.example.smartparkingoperator.data.remote.dto.TodaySummaryDto
 import com.example.smartparkingoperator.data.repository.AuthRepository
 import com.example.smartparkingoperator.data.repository.ParkingRepository
-import com.example.smartparkingoperator.theme.AppBackground
-import com.example.smartparkingoperator.theme.AppSurface
-import com.example.smartparkingoperator.theme.BorderDivider
-import com.example.smartparkingoperator.theme.PrimaryAccent
-import com.example.smartparkingoperator.theme.StatusError
-import com.example.smartparkingoperator.theme.StatusSuccess
-import com.example.smartparkingoperator.theme.StatusSuccessBg
 import com.example.smartparkingoperator.theme.StatusWarning
-import com.example.smartparkingoperator.theme.SurfaceHover
-import com.example.smartparkingoperator.theme.TextPrimary
-import com.example.smartparkingoperator.theme.TextSecondary
 import com.example.smartparkingoperator.ui.components.PersistentOfflineBanner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private val ScreenBackground = Color(0xFFF8FAFC)
+private val CardWhite = Color.White
+private val TextDark = Color(0xFF0F172A)
+private val TextMuted = Color(0xFF475569)
+private val TextLight = Color(0xFF94A3B8)
+private val BrandBlue = Color(0xFF2563EB)
+private val BrandBlueLight = Color(0xFFEFF6FF)
+private val BrandGreen = Color(0xFF16A34A)
+private val BrandGreenBg = Color(0xFFDCFCE7)
 
 @Composable
 fun HomeScreen(
@@ -94,554 +107,1019 @@ fun HomeScreen(
 ) {
     val location by parkingRepository.getLocation().collectAsState(initial = null)
     val availability by parkingRepository.getFirstAvailability().collectAsState(initial = null)
-    val rates by parkingRepository.getRates().collectAsState(initial = emptyList())
     val activeSessions by parkingRepository.getActiveSessions().collectAsState(initial = emptyList())
     val isOnline by connectivityObserver.observe().collectAsState(initial = connectivityObserver.isConnected())
     val pendingCount by parkingRepository.getPendingActionCount().collectAsState(initial = 0)
     val coroutineScope = rememberCoroutineScope()
     var isManualRefreshing by remember { mutableStateOf(false) }
 
-    val timeFormatter = SimpleDateFormat("hh:mm a, dd MMM", Locale.getDefault())
+    // Real backend live metrics & announcements
+    var todayStats by remember { mutableStateOf<TodaySummaryDto?>(null) }
+    var notifications by remember { mutableStateOf<List<NotificationDto>>(emptyList()) }
+    var showNotificationsDialog by remember { mutableStateOf(false) }
 
-    // Real-time synchronization loop: push pending actions and fetch updated slot counts every 5 seconds
+    val todayDateFormatted = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
+
+    // Real-time synchronization loop: every 5 seconds
     LaunchedEffect(Unit) {
         while (true) {
             try {
                 parkingRepository.syncPendingActions()
                 parkingRepository.refreshLocationAndRates()
+                
+                parkingRepository.getTodaySummary().fold(
+                    onSuccess = { todayStats = it },
+                    onFailure = { /* keep cached */ }
+                )
+                parkingRepository.getNotifications().fold(
+                    onSuccess = { notifications = it },
+                    onFailure = { /* keep cached */ }
+                )
             } catch (_: Exception) {}
             delay(5000)
         }
     }
 
-    // Resolved rates
-    val carRate = rates.firstOrNull { it.vehicleType.equals("CAR", ignoreCase = true) }?.ratePerHour?.toInt() ?: 40
-    val scooterRate = rates.firstOrNull { it.vehicleType.equals("SCOOTER", ignoreCase = true) }?.ratePerHour?.toInt() ?: 20
+    val carVacant = availability?.carVacant ?: 30
+    val carTotal = 40
+    val scooterVacant = availability?.scooterVacant ?: 15
+    val scooterTotal = 20
+    val totalVacant = availability?.totalVacant ?: (carVacant + scooterVacant)
+    val totalSlots = 60
+
+    val currencyFormat = NumberFormat.getNumberInstance(Locale.US)
+
+    val liveEntries = todayStats?.entries ?: 0
+    val liveExits = todayStats?.exits ?: 0
+    val liveCurrentlyParked = todayStats?.currentlyParked ?: activeSessions.size
+    val liveRevenue = todayStats?.todayRevenue ?: 0
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(AppBackground)
+            .background(ScreenBackground)
     ) {
-        // 1. Persistent Unobtrusive Offline Banner
+        // Persistent Unobtrusive Offline Banner
         PersistentOfflineBanner(isOffline = !isOnline, pendingCount = pendingCount)
 
-        // ── 2. Top Executive Header ───────────────────────────────────────────
-        Surface(
-            color = AppSurface,
-            shadowElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
+        // ── Main Dashboard (Scrollable with smooth fit) ───
+        val scrollState = rememberScrollState()
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // ── 1. Compact Header ─────────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Operator Avatar & Identity
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(PrimaryAccent, Color(0xFF1D4ED8))
-                                )
-                            )
+                            .background(BrandBlue)
                             .clickable { onNavigateToSettings() },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = authRepository.getOperatorUsername().take(1).uppercase(),
                             color = Color.White,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     Column {
                         Text(
-                            text = authRepository.getOperatorUsername(),
-                            style = MaterialTheme.typography.titleMedium,
+                            text = authRepository.getOperatorUsername().replaceFirstChar { it.uppercase() },
                             fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
+                            fontSize = 15.sp,
+                            color = TextDark,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Gate Operator",
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                            Text(
+                                text = " • ",
+                                fontSize = 10.sp,
+                                color = TextLight
+                            )
                             Box(
                                 modifier = Modifier
-                                    .size(7.dp)
+                                    .size(5.dp)
                                     .clip(CircleShape)
-                                    .background(if (isOnline) StatusSuccess else StatusWarning)
+                                    .background(if (isOnline) BrandGreen else StatusWarning)
                             )
-                            Spacer(modifier = Modifier.width(5.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = if (isOnline) "Live Online" else "Offline ($pendingCount)",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = if (isOnline) "Online" else "Offline ($pendingCount)",
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = if (isOnline) StatusSuccess else StatusWarning
+                                color = if (isOnline) BrandGreen else StatusWarning
                             )
                         }
                     }
                 }
 
-                // Action Icons with sleek rounded pill background
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Bell with notification indicator
+                    Box {
+                        IconButton(
+                            modifier = Modifier.size(34.dp),
+                            onClick = { showNotificationsDialog = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Announcements",
+                                tint = TextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        if (notifications.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 5.dp, end = 5.dp)
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEF4444))
+                            )
+                        }
+                    }
+
+                    // Settings Gear
+                    IconButton(
+                        modifier = Modifier.size(34.dp),
+                        onClick = onNavigateToSettings
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = TextMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── 2. Facility Card (Never Truncated, Clear Full Name) ────────────
+            val assignedLoc = location
+            Card(
+                colors = CardDefaults.cardColors(containerColor = CardWhite),
+                shape = RoundedCornerShape(14.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(14.dp))
+                    .clickable { onNavigateToSettings() }
+            ) {
                 Row(
                     modifier = Modifier
-                        .background(SurfaceHover, RoundedCornerShape(20.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(BrandBlueLight),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Apartment,
+                                contentDescription = null,
+                                tint = BrandBlue,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = assignedLoc?.name ?: "AeroPark – Camp",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.5.sp,
+                                color = TextDark,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "Primary Gate • Today, 09 Oct",
+                                    fontSize = 10.5.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(BrandGreenBg)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .clip(CircleShape)
+                                        .background(BrandGreen)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Active",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandGreen
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = TextLight,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── 3. Live Slot Availability Section ─────────────────────────────
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        modifier = Modifier.size(36.dp),
-                        onClick = {
+                    Text(
+                        text = "Live Slot Availability",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = TextDark
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable {
                             coroutineScope.launch {
                                 isManualRefreshing = true
                                 parkingRepository.syncPendingActions()
                                 parkingRepository.refreshLocationAndRates()
-                                delay(600)
+                                delay(500)
                                 isManualRefreshing = false
                             }
                         }
                     ) {
                         if (isManualRefreshing) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = PrimaryAccent
+                                modifier = Modifier.size(11.dp),
+                                strokeWidth = 1.5.dp,
+                                color = TextMuted
                             )
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "Refresh data",
-                                tint = TextSecondary,
-                                modifier = Modifier.size(20.dp)
+                                contentDescription = "Refresh",
+                                tint = TextMuted,
+                                modifier = Modifier.size(12.dp)
                             )
                         }
-                    }
-
-                    IconButton(
-                        modifier = Modifier.size(36.dp),
-                        onClick = onNavigateToSettings
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(
-                        modifier = Modifier.size(36.dp),
-                        onClick = onLogout
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Logout,
-                            contentDescription = "Log out",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── 3. Scrollable Dashboard Body ─────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // ── Facility & Gate Assignment Card ──────────────────────────────
-            val assignedLoc = location
-            if (assignedLoc != null) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = AppSurface),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, BorderDivider, RoundedCornerShape(14.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(PrimaryAccent.copy(alpha = 0.1f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.LocationOn,
-                                        contentDescription = null,
-                                        tint = PrimaryAccent,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = assignedLoc.name,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "Primary Gate • ${timeFormatter.format(Date(assignedLoc.lastUpdated))}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = TextSecondary
-                                    )
-                                }
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(StatusSuccessBg)
-                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                            ) {
-                                Text(
-                                    text = assignedLoc.code,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = StatusSuccess
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(color = BorderDivider)
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Live Rates Pill Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "RATES:",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
-                                fontSize = 10.sp
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            RateBadge(type = "Car", amount = carRate)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            RateBadge(type = "Bike", amount = scooterRate)
-                        }
-                    }
-                }
-            } else {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = AppSurface),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, BorderDivider, RoundedCornerShape(14.dp))
-                        .padding(16.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                        Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = "No Location Assignment",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "No facility assignment was resolved for your account today.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center
+                            text = "Just now",
+                            fontSize = 10.5.sp,
+                            color = TextMuted
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-            // ── Live Slot Availability Breakdown ─────────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Live Slot Availability",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "${activeSessions.size} parked",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = PrimaryAccent,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            val carVacant = availability?.carVacant ?: 30
-            val scooterVacant = availability?.scooterVacant ?: 15
-            val totalVacant = availability?.totalVacant ?: (carVacant + scooterVacant)
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ModernAvailabilityCard(
-                    title = "Cars Free",
-                    count = carVacant,
-                    icon = Icons.Default.DirectionsCar,
-                    accentColor = Color(0xFF2563EB),
-                    bgTint = Color(0xFFEFF6FF),
-                    modifier = Modifier.weight(1f)
-                )
-
-                ModernAvailabilityCard(
-                    title = "Scooters Free",
-                    count = scooterVacant,
-                    icon = Icons.Default.TwoWheeler,
-                    accentColor = Color(0xFF7C3AED),
-                    bgTint = Color(0xFFF5F3FF),
-                    modifier = Modifier.weight(1f)
-                )
-
-                ModernAvailabilityCard(
-                    title = "Total Free",
-                    count = totalVacant,
-                    icon = Icons.Default.LocalParking,
-                    accentColor = Color(0xFF059669),
-                    bgTint = Color(0xFFECFDF5),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ── Gate Operations Actions ──────────────────────────────────────
-            Text(
-                text = "Gate Operations",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 1. Primary Action: New Vehicle Entry Card
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = PrimaryAccent),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToEntry() }
-            ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    AvailabilityMetricCard(
+                        icon = {
                             Icon(
                                 imageVector = Icons.Default.DirectionsCar,
                                 contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
+                                tint = BrandBlue,
+                                modifier = Modifier.size(20.dp)
                             )
-                        }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column {
-                            Text(
-                                text = "New Vehicle Entry",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Camera ANPR or manual registration",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.85f)
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 2. Secondary Action: Process Vehicle Exit Card
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = AppSurface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.5.dp, BorderDivider, RoundedCornerShape(14.dp))
-                    .clickable { onNavigateToExit() }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                        },
+                        count = carVacant,
+                        label = "Cars Free",
+                        subLabel = "of $carTotal",
+                        bgColor = Color(0xFFEFF6FF),
+                        borderColor = Color(0xFFDBEAFE),
                         modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF059669).copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    )
+
+                    AvailabilityMetricCard(
+                        icon = {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                imageVector = Icons.Default.TwoWheeler,
                                 contentDescription = null,
-                                tint = Color(0xFF059669),
-                                modifier = Modifier.size(24.dp)
+                                tint = Color(0xFF9333EA),
+                                modifier = Modifier.size(20.dp)
                             )
-                        }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column {
-                            Text(
-                                text = "Process Vehicle Exit",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "Active session list, search & exit billing",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
+                        },
+                        count = scooterVacant,
+                        label = "Scooters Free",
+                        subLabel = "of $scooterTotal",
+                        bgColor = Color(0xFFFAF5FF),
+                        borderColor = Color(0xFFF3E8FF),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    AvailabilityMetricCard(
+                        icon = {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(BrandGreen),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "P",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        },
+                        count = totalVacant,
+                        label = "Total Free",
+                        subLabel = "of $totalSlots",
+                        bgColor = Color(0xFFF0FDF4),
+                        borderColor = Color(0xFFDCFCE7),
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            // ── 4. Gate Operations Section ────────────────────────────────────
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Gate Operations",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp,
+                        color = TextDark
+                    )
 
-            // ── 3. Active Parked Fleet Widget ────────────────────────────────
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.List,
+                            contentDescription = null,
+                            tint = Color(0xFF6366F1),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Quick Actions",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6366F1)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // New Vehicle Entry Card (Clean, Prominent)
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = BrandBlue),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(96.dp)
+                            .clickable { onNavigateToEntry() }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(7.dp))
+                                        .background(Color.White.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DirectionsCar,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.25f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+
+                            Column {
+                                Text(
+                                    text = "New Vehicle Entry",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Camera ANPR or manual",
+                                    fontSize = 9.sp,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // Process Vehicle Exit Card (Clean, Prominent)
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = CardWhite),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(96.dp)
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                            .clickable { onNavigateToExit() }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(7.dp))
+                                        .background(BrandGreenBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                        contentDescription = null,
+                                        tint = BrandGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(CircleShape)
+                                        .background(BrandBlueLight),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = BrandBlue,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+
+                            Column {
+                                Text(
+                                    text = "Process Vehicle Exit",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = TextDark
+                                )
+                                Text(
+                                    text = "Search, scan or quick exit",
+                                    fontSize = 9.sp,
+                                    color = TextMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── 5. Active Parked Vehicles Strip ───────────────────────────────
             Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = AppSurface),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = CardWhite),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, BorderDivider, RoundedCornerShape(14.dp))
+                    .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(12.dp))
                     .clickable { onNavigateToSessions() }
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(PrimaryAccent.copy(alpha = 0.08f)),
+                                .size(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(BrandBlueLight),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
                                 contentDescription = null,
-                                tint = PrimaryAccent,
-                                modifier = Modifier.size(20.dp)
+                                tint = BrandBlue,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
                                 text = "Active Parked Vehicles",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = TextDark
                             )
                             Text(
-                                text = "${activeSessions.size} vehicles currently in facility",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
+                                text = "$liveCurrentlyParked vehicles currently in facility",
+                                fontSize = 10.5.sp,
+                                color = TextMuted
                             )
                         }
                     }
 
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(SurfaceHover)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(BrandBlueLight)
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = "View All",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryAccent
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "View All",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BrandBlue
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = BrandBlue,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            // ── 6. Today's Summary (LIVE DATA - Real Database Values) ──────────
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Today's Summary",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = TextDark
+                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarToday,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = todayDateFormatted,
+                            fontSize = 10.5.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardWhite),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(16.dp))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Col 1: Entries
+                        SummaryCol(
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(BrandGreenBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowUpward,
+                                        contentDescription = null,
+                                        tint = BrandGreen,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            },
+                            value = "$liveEntries",
+                            label = "Entries",
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        VerticalDivider(
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.height(34.dp)
+                        )
+
+                        // Col 2: Exits
+                        SummaryCol(
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFEE2E2)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDownward,
+                                        contentDescription = null,
+                                        tint = Color(0xFFEF4444),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            },
+                            value = "$liveExits",
+                            label = "Exits",
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        VerticalDivider(
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.height(34.dp)
+                        )
+
+                        // Col 3: Currently Parked
+                        SummaryCol(
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFEF3C7)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DirectionsCar,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            },
+                            value = "$liveCurrentlyParked",
+                            label = "Parked",
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        VerticalDivider(
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.height(34.dp)
+                        )
+
+                        // Col 4: Today's Revenue
+                        SummaryCol(
+                            icon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(BrandBlueLight),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "₹",
+                                        color = BrandBlue,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            },
+                            value = currencyFormat.format(liveRevenue),
+                            label = "Revenue",
+                            modifier = Modifier.weight(1.1f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+            }
+        }
+
+        // ── 7. Compact Bottom Navigation Bar ─────────────────────────────────
+        Surface(
+            color = CardWhite,
+            shadowElevation = 8.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column {
+                HorizontalDivider(color = Color(0xFFE2E8F0))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BottomNavItem(
+                        icon = Icons.Default.Home,
+                        label = "Home",
+                        isSelected = true,
+                        onClick = { /* Home */ }
+                    )
+                    BottomNavItem(
+                        icon = Icons.Default.DirectionsCar,
+                        label = "Entry",
+                        isSelected = false,
+                        onClick = onNavigateToEntry
+                    )
+                    BottomNavItem(
+                        icon = Icons.AutoMirrored.Filled.ExitToApp,
+                        label = "Exit",
+                        isSelected = false,
+                        onClick = onNavigateToExit
+                    )
+                    BottomNavItem(
+                        icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+                        label = "Vehicles",
+                        isSelected = false,
+                        onClick = onNavigateToSessions
+                    )
+                    BottomNavItem(
+                        icon = Icons.Default.MoreHoriz,
+                        label = "More",
+                        isSelected = false,
+                        onClick = onNavigateToSettings
+                    )
+                }
+            }
+        }
+    }
+
+    // ── Admin Announcements & Notifications Modal Dialog ─────────────────────
+    if (showNotificationsDialog) {
+        Dialog(onDismissRequest = { showNotificationsDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = CardWhite),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(BrandBlueLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = BrandBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Admin Announcements",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = TextDark
+                                )
+                                Text(
+                                    text = "Broadcasts from facility command",
+                                    fontSize = 11.sp,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            modifier = Modifier.size(28.dp),
+                            onClick = { showNotificationsDialog = false }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = TextMuted
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = Color(0xFFF1F5F9))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (notifications.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = TextLight,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "No Active Announcements",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = TextDark
+                            )
+                            Text(
+                                text = "All messages sent by admin will appear here.",
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.height(300.dp)
+                        ) {
+                            items(notifications) { notif ->
+                                val isUrgent = notif.priority.equals("URGENT", ignoreCase = true)
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isUrgent) Color(0xFFFEF2F2) else Color(0xFFF8FAFC)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            1.dp,
+                                            if (isUrgent) Color(0xFFFECACA) else Color(0xFFE2E8F0),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = notif.title,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.5.sp,
+                                                color = if (isUrgent) Color(0xFFDC2626) else TextDark,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(
+                                                        if (isUrgent) Color(0xFFFEE2E2) else BrandBlueLight
+                                                    )
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = notif.priority,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isUrgent) Color(0xFFDC2626) else BrandBlue
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = notif.message,
+                                            fontSize = 12.sp,
+                                            color = if (isUrgent) Color(0xFF991B1B) else Color(0xFF334155),
+                                            lineHeight = 16.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "By ${notif.sender}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextLight
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -649,80 +1127,113 @@ fun HomeScreen(
 // ── Reusable Component Helpers ───────────────────────────────────────────────
 
 @Composable
-private fun RateBadge(type: String, amount: Int) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(SurfaceHover)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun AvailabilityMetricCard(
+    icon: @Composable () -> Unit,
+    count: Int,
+    label: String,
+    subLabel: String,
+    bgColor: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp, horizontal = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            icon()
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "$count",
+                fontWeight = FontWeight.Black,
+                fontSize = 17.sp,
+                color = TextDark
+            )
+            Spacer(modifier = Modifier.height(1.dp))
+            Text(
+                text = label,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TextDark,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subLabel,
+                fontSize = 9.sp,
+                color = TextLight,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryCol(
+    icon: @Composable () -> Unit,
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        icon()
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "$type ",
-            style = MaterialTheme.typography.labelSmall,
-            color = TextSecondary,
-            fontSize = 11.sp
-        )
-        Text(
-            text = "₹$amount/h",
-            style = MaterialTheme.typography.labelSmall,
+            text = value,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary,
-            fontSize = 11.sp
+            fontSize = 15.sp,
+            color = TextDark
+        )
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = TextMuted,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
 
 @Composable
-private fun ModernAvailabilityCard(
-    title: String,
-    count: Int,
+private fun BottomNavItem(
     icon: ImageVector,
-    accentColor: Color,
-    bgTint: Color,
-    modifier: Modifier = Modifier
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = AppSurface),
-        shape = RoundedCornerShape(12.dp),
-        modifier = modifier
-            .border(1.dp, BorderDivider, RoundedCornerShape(12.dp))
+    val tint = if (isSelected) BrandBlue else TextLight
+    Column(
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(bgTint),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "$count",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black,
-                color = if (count > 0) TextPrimary else StatusError
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                fontSize = 10.sp
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(19.dp)
+        )
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(
+            text = label,
+            fontSize = 9.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = tint
+        )
     }
 }

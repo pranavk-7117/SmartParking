@@ -125,3 +125,21 @@ data class GenericMessageDto(
     @SerializedName("message") val message: String?
 )
 
+data class TodaySummaryDto(
+    @SerializedName("entries") val entries: Int = 0,
+    @SerializedName("exits") val exits: Int = 0,
+    @SerializedName("currentlyParked") val currentlyParked: Int = 0,
+    @SerializedName("todayRevenue") val todayRevenue: Int = 0
+)
+
+data class NotificationDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("message") val message: String,
+    @SerializedName("priority") val priority: String = "INFO",
+    @SerializedName("sender") val sender: String = "Admin",
+    @SerializedName("locationId") val locationId: String? = null,
+    @SerializedName("createdAt") val createdAt: String
+)
+
+
