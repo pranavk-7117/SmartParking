@@ -524,7 +524,9 @@ export const Reports: React.FC = () => {
             Tabular Breakdown Data
           </h2>
           <span className="text-xs text-neutral-400">
-            {filteredDataPoints.length} data intervals
+            {filteredDataPoints.length === 0
+              ? 'No activity in this period'
+              : `${filteredDataPoints.length} active date${filteredDataPoints.length === 1 ? '' : 's'}`}
           </span>
         </div>
 
@@ -533,6 +535,10 @@ export const Reports: React.FC = () => {
           data={filteredDataPoints}
           keyExtractor={(d) => d.label}
           isLoading={isLoading}
+          emptyTitle="No vehicle activity recorded"
+          emptyDescription={`No parking sessions or revenue found during ${dateRange} for ${currentSite?.name}. When you add or check out vehicles today, their statistics will immediately show here.`}
+          emptyActionText={dateRange !== 'All Time' ? 'View All Time History' : undefined}
+          onEmptyAction={dateRange !== 'All Time' ? () => setDateRange('All Time') : undefined}
         />
       </div>
     </div>
