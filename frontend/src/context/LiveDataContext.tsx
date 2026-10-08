@@ -244,6 +244,7 @@ interface LiveDataContextType {
   addOperator: (operatorData: { name: string; username: string; contact: string; assignedSiteId: string }) => void;
   reassignOperatorSite: (operatorId: string, newSiteId: string, reason?: string) => void;
   terminateOperator: (operatorId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
   dismissAlert: (alertId: string) => void;
   refresh: () => void;
 }
@@ -665,6 +666,27 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
     [triggerFlash]
   );
 
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      await api.delete(`/sessions/${sessionId}`);
+      setAllSessions((prev) => {
+        const target = prev.find((s) => s.id === sessionId);
+        if (target && target.status === 'Active') {
+          setAllSlots((sPrev) =>
+            sPrev.map((sl) =>
+              sl.locationCode === target.slotId || sl.id === target.slotId
+                ? { ...sl, status: 'Vacant', currentVehicleNumber: undefined, currentSessionId: undefined }
+                : sl
+            )
+          );
+        }
+        return prev.filter((s) => s.id !== sessionId);
+      });
+      triggerFlash();
+    },
+    [triggerFlash]
+  );
+
   const dismissAlert = useCallback((alertId: string) => {
     setAlerts((prev) => prev.filter((a) => a.id !== alertId));
   }, []);
@@ -708,6 +730,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
         addOperator,
         reassignOperatorSite,
         terminateOperator,
+        deleteSession,
         dismissAlert,
         refresh,
       }}

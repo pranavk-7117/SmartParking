@@ -145,3 +145,46 @@ sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+/**
+ * DELETE /api/v1/sessions/:id
+ * Permanently removes a session/vehicle record and frees the slot if it was active.
+ */
+sessionsRouter.delete('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const session = await prisma.parkingSession.findUnique({
+      where: { id },
+      include: { slot: true },
+    });
+
+    if (!session) {
+      throw new AppError('Session not found', 404);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. If session was active, free the parking slot
+      if (session.status === SessionStatus.ACTIVE && session.slotId) {
+        await tx.slot.update({
+          where: { id: session.slotId },
+          data: { status: SlotStatus.VACANT },
+        });
+      }
+
+      // 2. Delete any attached bill
+      await tx.bill.deleteMany({
+        where: { sessionId: id },
+      });
+
+      // 3. Delete the session
+      await tx.parkingSession.delete({
+        where: { id },
+      });
+    });
+
+    res.json({ success: true, message: 'Session deleted and slot updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+

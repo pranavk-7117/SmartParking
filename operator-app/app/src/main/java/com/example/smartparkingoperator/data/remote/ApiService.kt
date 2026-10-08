@@ -39,7 +39,9 @@ interface ApiService {
     ): Response<List<ActiveSessionDto>>
 
     @GET("/api/v1/rates")
-    suspend fun getRates(): Response<List<RateDto>>
+    suspend fun getRates(
+        @Query("siteId") siteId: String? = null
+    ): Response<List<RateDto>>
 
     @POST("/api/v1/entries")
     suspend fun postEntry(

@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   Printer,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
 import { useToast } from '../context/ToastContext';
@@ -14,6 +15,7 @@ import { Table, Column } from '../components/common/Table';
 import { SearchInput, Select } from '../components/common/Input';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
+import { ConfirmationModal } from '../components/common/Modal';
 import { ParkingSession } from '../types';
 import { exportToCSV, exportToPDF } from '../utils/exportUtils';
 
@@ -37,8 +39,25 @@ function formatDateTime(str?: string | null): string {
 
 export const SessionHistory: React.FC = () => {
   const navigate = useNavigate();
-  const { sessions, currentSite } = useLiveData();
+  const { sessions, currentSite, deleteSession } = useLiveData();
   const { showToast } = useToast();
+
+  const [sessionToDelete, setSessionToDelete] = useState<ParkingSession | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteConfirm = async () => {
+    if (!sessionToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteSession(sessionToDelete.id);
+      showToast(`Vehicle ${sessionToDelete.vehicleNumber} session deleted successfully.`, 'success');
+      setSessionToDelete(null);
+    } catch (err) {
+      showToast('Failed to delete session', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -272,7 +291,7 @@ export const SessionHistory: React.FC = () => {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      width: '7%',
+      width: '10%',
       render: (s) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           <button
@@ -290,6 +309,14 @@ export const SessionHistory: React.FC = () => {
             title="Print Receipt"
           >
             <Printer className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSessionToDelete(s)}
+            className="p-1.5 rounded text-neutral-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+            title="Delete Vehicle Session"
+          >
+            <Trash2 className="w-4 h-4 text-neutral-400 hover:text-red-600" />
           </button>
         </div>
       ),
@@ -422,6 +449,16 @@ export const SessionHistory: React.FC = () => {
             setCurrentPage(1);
           },
         }}
+      />
+
+      <ConfirmationModal
+        isOpen={sessionToDelete !== null}
+        onClose={() => setSessionToDelete(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Vehicle Record"
+        message={`Are you sure you want to delete the record for vehicle ${sessionToDelete?.vehicleNumber} (Slot ${sessionToDelete?.slotId})? If this session is currently active, the slot will immediately become vacant.`}
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Record'}
+        variant="danger"
       />
     </div>
   );

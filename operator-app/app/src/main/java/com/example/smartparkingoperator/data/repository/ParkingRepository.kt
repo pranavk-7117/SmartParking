@@ -304,19 +304,19 @@ class ParkingRepository(
                     }
                     database.activeSessionDao().syncActiveSessions(serverSessions)
                 }
-            }
 
-            // Refresh rates
-            val ratesRes = apiService.getRates()
-            if (ratesRes.isSuccessful && ratesRes.body() != null) {
-                val rates = ratesRes.body()!!.map { r ->
-                    RateMasterEntity(
-                        vehicleType = r.vehicleType,
-                        ratePerHour = r.ratePerHour,
-                        effectiveFrom = r.effectiveFrom
-                    )
+                // Refresh rates specifically for this assigned location
+                val ratesRes = apiService.getRates(siteId = dto.locationId)
+                if (ratesRes.isSuccessful && ratesRes.body() != null) {
+                    val rates = ratesRes.body()!!.map { r ->
+                        RateMasterEntity(
+                            vehicleType = r.vehicleType,
+                            ratePerHour = r.ratePerHour,
+                            effectiveFrom = r.effectiveFrom
+                        )
+                    }
+                    database.rateDao().insertRates(rates)
                 }
-                database.rateDao().insertRates(rates)
             }
         } catch (_: Exception) {
             // Fail silently on network fetch failure — Room cached data remains intact

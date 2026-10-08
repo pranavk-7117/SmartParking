@@ -11,17 +11,23 @@ import {
   CheckCircle2,
   MapPin,
   Calendar,
+  Trash2,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
+import { useToast } from '../context/ToastContext';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
+import { ConfirmationModal } from '../components/common/Modal';
 import { EmptyState } from '../components/common/EmptyState';
 
 export const SessionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { sessions, currentSite, sites } = useLiveData();
+  const { sessions, currentSite, sites, deleteSession } = useLiveData();
+  const { showToast } = useToast();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   const session = sessions.find((s) => s.id === id);
 
@@ -49,6 +55,20 @@ export const SessionDetail: React.FC = () => {
   const sessionSite = sites.find((s) => s.id === session.siteId) || currentSite;
   const gateInfo = sessionSite?.gateInfo || 'Terminal 2 · Gates 1 & 2 (ANPR Lane)';
 
+  const handleDelete = async () => {
+    if (!session) return;
+    setIsDeleting(true);
+    try {
+      await deleteSession(session.id);
+      showToast(`Vehicle ${session.vehicleNumber} session deleted successfully.`, 'success');
+      navigate('/sessions');
+    } catch {
+      showToast('Failed to delete session', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Top Breadcrumb & Actions */}
@@ -69,14 +89,24 @@ export const SessionDetail: React.FC = () => {
           </div>
         </div>
 
-        <Button
-          variant="primary"
-          size="md"
-          leftIcon={<Printer className="w-4 h-4" />}
-          onClick={() => navigate(`/sessions/${session.id}/receipt`)}
-        >
-          Print Receipt
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="danger"
+            size="md"
+            leftIcon={<Trash2 className="w-4 h-4" />}
+            onClick={() => setIsDeleteModalOpen(true)}
+          >
+            Delete Session
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            leftIcon={<Printer className="w-4 h-4" />}
+            onClick={() => navigate(`/sessions/${session.id}/receipt`)}
+          >
+            Print Receipt
+          </Button>
+        </div>
       </div>
 
       {/* Timeline Visual: Entry -> Parked -> Exit -> Complete */}
@@ -251,6 +281,16 @@ export const SessionDetail: React.FC = () => {
           </div>
         </Card>
       </div>
+
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDelete}
+        title="Delete Vehicle Session"
+        message={`Are you sure you want to delete the record for vehicle ${session.vehicleNumber} (Slot ${session.slotId})? If the session is currently active, the slot will be freed immediately.`}
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Session'}
+        variant="danger"
+      />
     </div>
   );
 };
