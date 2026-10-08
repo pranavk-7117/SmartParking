@@ -91,7 +91,7 @@ export const SessionDetail: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <Button
-            variant="danger"
+            variant="destructive"
             size="md"
             leftIcon={<Trash2 className="w-4 h-4" />}
             onClick={() => setIsDeleteModalOpen(true)}
@@ -287,9 +287,11 @@ export const SessionDetail: React.FC = () => {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
         title="Delete Vehicle Session"
+        itemName={session.vehicleNumber}
         message={`Are you sure you want to delete the record for vehicle ${session.vehicleNumber} (Slot ${session.slotId})? If the session is currently active, the slot will be freed immediately.`}
-        confirmText={isDeleting ? 'Deleting...' : 'Delete Session'}
-        variant="danger"
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Session'}
+        isDestructive={true}
+        isLoading={isDeleting}
       />
     </div>
   );

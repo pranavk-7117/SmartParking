@@ -28,6 +28,7 @@ import { Table, Column } from '../components/common/Table';
 import { EmptyState } from '../components/common/EmptyState';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
+import { Modal } from '../components/common/Modal';
 import { useToast } from '../context/ToastContext';
 import { SiteReassignmentEvent } from '../types';
 
@@ -176,45 +177,81 @@ export const OperatorProfile: React.FC = () => {
         </Button>
       </div>
 
-      {/* Edit Modal */}
-      {isEditing && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b border-neutral-100">
-              <div>
-                <h2 className="text-base font-bold text-neutral-900">Edit Operator Profile</h2>
-                <p className="text-xs text-neutral-500 mt-0.5">Changes are saved to the database immediately</p>
-              </div>
-              <button onClick={() => setIsEditing(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
-                <X className="w-4 h-4 text-neutral-500" />
-              </button>
-            </div>
-            <div className="p-5 space-y-3">
-              <Input label="Full Name" value={editName} onChange={(e) => setEditName(e.target.value)} required />
-              <Input label="Contact Phone" value={editContact} onChange={(e) => setEditContact(e.target.value)} />
-              <Input label="Email Address" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
-              <Input label="Employee ID" value={editEmployeeId} onChange={(e) => setEditEmployeeId(e.target.value)} placeholder="e.g. EMP-2024-001" />
-              <Input label="Shift Time" value={editShiftTime} onChange={(e) => setEditShiftTime(e.target.value)} placeholder="e.g. 06:00 AM – 02:00 PM" />
-              <Input label="Notes / Bio" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Visible to admin and operator" />
-              <div className="pt-2 border-t border-neutral-100">
-                <Input
-                  label="Reset Password (leave blank to keep current)"
-                  type="password"
-                  value={editPassword}
-                  onChange={(e) => setEditPassword(e.target.value)}
-                  placeholder="Min 6 characters"
-                />
-              </div>
-              <div className="flex gap-2.5 pt-2">
-                <Button variant="secondary" onClick={() => setIsEditing(false)} className="flex-1">Cancel</Button>
-                <Button variant="primary" onClick={handleSaveEdit} disabled={isSaving} className="flex-1">
-                  {isSaving ? 'Saving…' : 'Save Changes'}
-                </Button>
-              </div>
-            </div>
+      {/* Edit Modal using Standard Modal Component */}
+      <Modal
+        isOpen={isEditing}
+        onClose={() => setIsEditing(false)}
+        title="Edit Operator Profile"
+        description="Update personal attributes, operational shift, or reset credentials"
+        maxWidth="lg"
+        footer={
+          <div className="flex items-center justify-end gap-2.5 w-full">
+            <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveEdit} disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save Changes'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <Input
+              label="Full Name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              required
+            />
+            <Input
+              label="Contact Phone"
+              value={editContact}
+              onChange={(e) => setEditContact(e.target.value)}
+              placeholder="+91 98220 12345"
+            />
+            <Input
+              label="Email Address"
+              type="email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              placeholder="operator@smartparking.io"
+            />
+            <Input
+              label="Employee ID"
+              value={editEmployeeId}
+              onChange={(e) => setEditEmployeeId(e.target.value)}
+              placeholder="e.g. EMP-2024-001"
+            />
+            <Input
+              label="Shift Time"
+              value={editShiftTime}
+              onChange={(e) => setEditShiftTime(e.target.value)}
+              placeholder="e.g. 06:00 AM – 02:00 PM"
+              className="sm:col-span-2"
+            />
+          </div>
+
+          <Input
+            label="Notes / Bio"
+            value={editNotes}
+            onChange={(e) => setEditNotes(e.target.value)}
+            placeholder="Operational notes visible to both admin and operator"
+          />
+
+          <div className="pt-3 border-t border-neutral-100">
+            <Input
+              label="Reset Password (leave blank to keep current)"
+              type="password"
+              value={editPassword}
+              onChange={(e) => setEditPassword(e.target.value)}
+              placeholder="Enter minimum 6 characters to reset"
+            />
+            <p className="text-[11px] text-neutral-400 mt-1">
+              If left blank, the operator's existing password will remain unchanged.
+            </p>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Profile Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

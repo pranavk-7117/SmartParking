@@ -456,9 +456,11 @@ export const SessionHistory: React.FC = () => {
         onClose={() => setSessionToDelete(null)}
         onConfirm={handleDeleteConfirm}
         title="Delete Vehicle Record"
+        itemName={sessionToDelete?.vehicleNumber || ''}
         message={`Are you sure you want to delete the record for vehicle ${sessionToDelete?.vehicleNumber} (Slot ${sessionToDelete?.slotId})? If this session is currently active, the slot will immediately become vacant.`}
-        confirmText={isDeleting ? 'Deleting...' : 'Delete Record'}
-        variant="danger"
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Record'}
+        isDestructive={true}
+        isLoading={isDeleting}
       />
     </div>
   );
