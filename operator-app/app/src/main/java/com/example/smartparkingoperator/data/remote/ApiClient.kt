@@ -6,12 +6,14 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    // LAN IP of the PC — phone and PC must be on the same WiFi network
-    private const val DEFAULT_BASE_URL = "http://192.168.2.104:3000/"
+    // Current LAN IP of the PC (Wi-Fi). If USB ADB reverse is used, fallback automatically routes to 127.0.0.1.
+    private const val DEFAULT_BASE_URL = "http://192.168.2.103:3000/"
+    private const val ADB_FALLBACK_HOST = "127.0.0.1"
 
     fun create(sessionManager: SecureSessionManager, baseUrl: String = DEFAULT_BASE_URL): ApiService {
         val authInterceptor = Interceptor { chain ->
@@ -33,14 +35,39 @@ object ApiClient {
             chain.proceed(request)
         }
 
+        // Automatic fallback: try Wi-Fi LAN IP first. If unreachable (e.g. phone not on same Wi-Fi),
+        // fallback to 127.0.0.1 (ADB reverse via USB).
+        val fallbackInterceptor = Interceptor { chain ->
+            val request = chain.request()
+            try {
+                chain.proceed(request)
+            } catch (e: IOException) {
+                val originalHost = request.url.host
+                if (originalHost != ADB_FALLBACK_HOST && originalHost != "localhost") {
+                    val fallbackUrl = request.url.newBuilder()
+                        .host(ADB_FALLBACK_HOST)
+                        .build()
+                    val fallbackRequest = request.newBuilder().url(fallbackUrl).build()
+                    try {
+                        chain.proceed(fallbackRequest)
+                    } catch (_: IOException) {
+                        throw e
+                    }
+                } else {
+                    throw e
+                }
+            }
+        }
+
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(fallbackInterceptor)
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .build()
