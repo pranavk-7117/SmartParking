@@ -1,63 +1,216 @@
-# Smart Parking Management System — Database Layer
+# Smart Parking Management System
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-5A67D8.svg)](https://www.prisma.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-3178C6.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18+-61DAFB.svg)](https://react.dev/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF.svg)](https://kotlinlang.org/)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)](https://developer.android.com/)
 
-The database layer and relational schema implementation for the **Smart Parking Management System**, engineered for high concurrency, auditable transaction tracking, real-time slot occupancy tracking, and deterministic historical billing.
+A full-stack smart parking facility management platform consisting of three integrated components:
 
-This repository represents the **database-design implementation phase**: models, PostgreSQL native enums, indexes, custom SQL constraints, versioned Prisma migrations, idempotent seeding, and smoke-testing suite.
+| Component | Description |
+|---|---|
+| **Backend API** | Express + TypeScript REST API with JWT authentication and PostgreSQL via Prisma |
+| **Admin Dashboard** | React + Vite web application for facility administrators |
+| **Operator App** | Native Android (Jetpack Compose) application for gate operators — offline-first |
 
 ---
 
 ## Table of Contents
-- [Architecture and Design Principles](#architecture-and-design-principles)
-- [Entity-Relationship Overview](#entity-relationship-overview)
-- [Data Dictionary and Models](#data-dictionary-and-models)
-- [Custom Database Constraints and Rules](#custom-database-constraints-and-rules)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Environment Setup](#environment-setup)
-  - [Installation and Migrations](#installation-and-migrations)
-  - [Database Seeding](#database-seeding)
-  - [Visual Inspection (Prisma Studio)](#visual-inspection-prisma-studio)
-  - [Running Verification Tests](#running-verification-tests)
+
+- [System Architecture](#system-architecture)
+- [Repository Structure](#repository-structure)
+- [Backend API](#backend-api)
+  - [Tech Stack](#backend-tech-stack)
+  - [API Reference](#api-reference)
+  - [Database Schema](#database-schema)
+  - [Getting Started (Backend)](#getting-started-backend)
+- [Admin Dashboard (Frontend)](#admin-dashboard-frontend)
+  - [Features](#admin-dashboard-features)
+  - [Getting Started (Frontend)](#getting-started-frontend)
+- [Operator Android App](#operator-android-app)
+  - [Tech Stack](#android-tech-stack)
+  - [Core Screens](#core-screens)
+  - [Offline-First Architecture](#offline-first-architecture)
+  - [Getting Started (Android)](#getting-started-android)
 - [Available Scripts](#available-scripts)
 - [License](#license)
 
 ---
 
-## Architecture and Design Principles
+## System Architecture
 
-1. **Third Normal Form (3NF) Compliance**:
-   - Eliminates data redundancy: `vehicles`, `slots`, `rate_master`, `parking_sessions`, `bills`, and `admin_users` are independent relational tables linked strictly via foreign keys.
-2. **UUID Primary Keys**:
-   - Every entity generates a non-sequential, random UUID (`@id @default(uuid()) @db.Uuid`). Prevents guessable enumeration attacks on public API endpoints.
-3. **Historical Billing Integrity**:
-   - The `bills` table snapshots the applied hourly rate (`rate_applied`) at the moment a session closes. Future rate changes in `rate_master` never retroactively alter past transaction amounts.
-4. **Naming Conventions**:
-   - **Database level**: `snake_case` table and column names via Prisma's `@@map` and `@map`.
-   - **Application / Code level**: `camelCase` model accessors generated in the TypeScript Prisma Client.
-   - **Enums**: Native PostgreSQL enum types (`CREATE TYPE ... AS ENUM`), ensuring type safety at the database engine level.
+```mermaid
+flowchart LR
+    subgraph "Admin Dashboard (React)"
+        A["Login / Auth"]
+        B["Live Slot Dashboard"]
+        C["Operator Management"]
+        D["Reports & Revenue"]
+        E["Rates & Locations"]
+    end
+
+    subgraph "Backend API (Express + TypeScript)"
+        F["REST API :3000"]
+        G["JWT Middleware"]
+        H["Prisma ORM"]
+    end
+
+    subgraph "PostgreSQL Database"
+        I[("admin_users\nlocations\nslots\nvehicles\nparkingsessions\nbills\nrate_master")]
+    end
+
+    subgraph "Operator App (Android / Compose)"
+        J["Login Screen"]
+        K["Home Dashboard"]
+        L["Entry Capture (CameraX + ML Kit)"]
+        M["Exit & Billing"]
+        N["Settings & Profile"]
+        O["Room DB (Offline Cache)"]
+    end
+
+    A & B & C & D & E --> F
+    J & K & L & M & N --> F
+    F --> G --> H --> I
+    O -. sync .-> F
+```
 
 ---
 
-## Entity-Relationship Overview
+## Repository Structure
+
+```
+.
+├── src/                          # Backend API source (TypeScript)
+│   ├── app.ts                    # Express app factory
+│   ├── index.ts                  # Server entry point
+│   ├── middleware/
+│   │   ├── auth.ts               # JWT authentication middleware
+│   │   └── errorHandler.ts       # Global error handler
+│   └── routes/
+│       ├── auth.ts               # Login, profile, change-password
+│       ├── entries.ts            # Vehicle entry (gate-in)
+│       ├── exits.ts              # Vehicle exit + billing
+│       ├── locations.ts          # Location info + live slot availability
+│       ├── me.ts                 # Current user profile + today's summary
+│       ├── notifications.ts      # Admin announcements
+│       ├── operators.ts          # Operator CRUD (admin only)
+│       ├── rates.ts              # Parking rate management
+│       ├── reports.ts            # Revenue and session reports
+│       ├── sessions.ts           # Active/historical session queries
+│       ├── sites.ts              # Site management
+│       └── slots.ts              # Slot status management
+├── prisma/
+│   ├── schema.prisma             # Prisma data model
+│   ├── seed.ts                   # Idempotent database seeder
+│   └── migrations/               # Versioned migration history
+├── frontend/                     # Admin Dashboard (React + Vite + Tailwind)
+│   └── src/
+│       ├── pages/                # Dashboard pages (login, home, reports, etc.)
+│       ├── components/           # Shared UI components
+│       ├── api/                  # API client layer
+│       └── context/              # Auth + app context
+├── operator-app/                 # Native Android Operator App (Kotlin + Compose)
+│   └── app/src/main/java/.../
+│       ├── ui/screens/           # Compose screens (home, entry, exit, settings)
+│       ├── data/repository/      # ParkingRepository + AuthRepository
+│       ├── data/remote/dto/      # Retrofit DTOs
+│       ├── data/local/entity/    # Room entities
+│       └── data/local/           # AppDatabase (Room)
+├── test/
+│   ├── smoke.ts                  # Database constraint verification tests
+│   └── api.ts                   # API integration tests
+├── docs/
+│   └── API_CONTRACT_ADDENDUM.md  # API contract documentation
+├── .env.example                  # Environment variable template
+├── package.json
+└── tsconfig.json
+```
+
+---
+
+## Backend API
+
+### Backend Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js v18+ |
+| Framework | Express 4 |
+| Language | TypeScript 5.7+ |
+| ORM | Prisma 6 |
+| Database | PostgreSQL 16+ |
+| Auth | JSON Web Tokens (JWT) + bcryptjs |
+| Validation | Zod |
+
+### API Reference
+
+All routes are prefixed with `/api/v1`. Protected routes require `Authorization: Bearer <token>`.
+
+#### Authentication
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/auth/login` | — | Login and receive JWT |
+| `GET` | `/auth/me` | ✅ | Get current user profile |
+| `PUT` | `/auth/me` | ✅ | Update profile (name, email) |
+| `PUT` | `/auth/change-password` | ✅ | Change password (accepts camelCase & snake_case) |
+
+#### Locations & Availability
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/locations` | ✅ | List all locations |
+| `GET` | `/locations/:id/availability` | ✅ | Live slot availability including `car_total`, `scooter_total`, `total_slots` |
+
+#### Parking Operations
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/entries` | ✅ | Record vehicle entry (idempotency key supported) |
+| `POST` | `/exits` | ✅ | Process vehicle exit, compute bill |
+| `GET` | `/sessions` | ✅ | List sessions (filterable by status/location) |
+
+#### Operator & Admin
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/operators` | ✅ Admin | List all operators |
+| `POST` | `/operators` | ✅ Admin | Create operator (sets username + password) |
+| `PUT` | `/operators/:id` | ✅ Admin | Update operator |
+| `DELETE` | `/operators/:id` | ✅ Admin | Delete operator |
+| `GET` | `/me/today-summary` | ✅ | Today's entries, exits, parked count, revenue |
+| `GET` | `/notifications` | ✅ | Admin announcements |
+
+#### Rates & Reports
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `GET` | `/rates` | ✅ | Get current parking rates |
+| `PUT` | `/rates` | ✅ Admin | Update rates |
+| `GET` | `/reports` | ✅ Admin | Revenue reports |
+
+### Database Schema
 
 ```mermaid
 erDiagram
-    vehicles ||--o{ parking_sessions : "has"
-    slots ||--o{ parking_sessions : "allocated to"
-    parking_sessions ||--o| bills : "billed by"
-    rate_master ||..o| bills : "rate snapshotted to"
     admin_users {
         uuid id PK
         varchar username UK
         varchar password_hash
         admin_role role
+        varchar display_name
         timestamptz created_at
+    }
+
+    locations {
+        uuid id PK
+        varchar name
+        varchar code UK
+        int totalCarSlots
+        int totalScooterSlots
     }
 
     vehicles {
@@ -69,11 +222,10 @@ erDiagram
 
     slots {
         uuid id PK
+        uuid location_id FK
         varchar location_code UK
         vehicle_type slot_type
         slot_status status
-        timestamptz created_at
-        timestamptz updated_at
     }
 
     rate_master {
@@ -81,231 +233,217 @@ erDiagram
         vehicle_type vehicle_type UK
         decimal rate_per_hour
         date effective_from
-        timestamptz created_at
     }
 
     parking_sessions {
         uuid id PK
         uuid vehicle_id FK
         uuid slot_id FK
+        uuid operator_id FK
         timestamptz in_time
         timestamptz out_time
         session_status status
-        timestamptz created_at
     }
 
     bills {
         uuid id PK
-        uuid session_id FK,UK
+        uuid session_id FK
         integer duration_minutes
         decimal rate_applied
         decimal amount
         timestamptz generated_on
     }
+
+    vehicles ||--o{ parking_sessions : "has"
+    slots ||--o{ parking_sessions : "allocated to"
+    parking_sessions ||--o| bills : "billed by"
+    locations ||--o{ slots : "contains"
+    admin_users ||--o{ parking_sessions : "operated by"
 ```
 
----
+#### Custom PostgreSQL Constraints
 
-## Data Dictionary and Models
+Enforced via migration `20260904000002_add_custom_constraints`:
 
-### 1. `vehicles` (`Vehicle`)
-Represents vehicles entering and using the facility.
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `UUID` | `PRIMARY KEY`, default random | Unique identifier |
-| `vehicle_number` | `VARCHAR(15)` | `UNIQUE`, `NOT NULL` | License plate number (e.g. `KA-01-AB-1234`) |
-| `vehicle_type` | `ENUM` | `NOT NULL` (`CAR`, `SCOOTER`) | Categorization for bay allocation |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT now()` | First registration timestamp |
+1. **Timestamp sanity** — `out_time` must be `NULL` or strictly greater than `in_time`.
+2. **One active session per vehicle** — Partial unique index prevents duplicate entry for an already-parked vehicle.
+3. **No slot double-booking** — Partial unique index prevents two concurrent sessions sharing the same slot.
 
-### 2. `slots` (`Slot`)
-Represents physical parking bays.
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `UUID` | `PRIMARY KEY`, default random | Unique bay identifier |
-| `location_code` | `VARCHAR(10)` | `UNIQUE`, `NOT NULL` | Bay identifier (e.g. `C-01`, `S-02`) |
-| `slot_type` | `ENUM` | `NOT NULL` (`CAR`, `SCOOTER`) | Supported vehicle category |
-| `status` | `ENUM` | `NOT NULL`, `DEFAULT 'VACANT'` | `VACANT`, `OCCUPIED`, `OUT_OF_SERVICE` |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT now()` | Creation timestamp |
-| `updated_at` | `TIMESTAMPTZ` | `NOT NULL`, auto-updated | Last status modification timestamp |
+### Getting Started (Backend)
 
-*Index*: Composite index on `(slot_type, status)` for instant vacant bay lookups.
+#### Prerequisites
+- [Node.js](https://nodejs.org/) v18+
+- [PostgreSQL](https://www.postgresql.org/) v14+
 
-### 3. `rate_master` (`RateMaster`)
-Configuration table for category-wise hourly tariffs.
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `UUID` | `PRIMARY KEY`, default random | Unique tariff identifier |
-| `vehicle_type` | `ENUM` | `UNIQUE`, `NOT NULL` (`CAR`, `SCOOTER`) | Target vehicle category |
-| `rate_per_hour` | `DECIMAL(8,2)`| `NOT NULL` | Configured hourly rate (e.g. `40.00`) |
-| `effective_from`| `DATE` | `NOT NULL` | Date when the rate takes effect |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT now()` | Creation timestamp |
-
-### 4. `parking_sessions` (`ParkingSession`)
-Core operational transaction log tracking entry, occupancy, and exit.
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `UUID` | `PRIMARY KEY`, default random | Unique session identifier |
-| `vehicle_id` | `UUID` | `FK -> vehicles.id`, `ON DELETE RESTRICT` | Associated vehicle |
-| `slot_id` | `UUID` | `FK -> slots.id`, `ON DELETE RESTRICT` | Associated slot |
-| `in_time` | `TIMESTAMPTZ` | `NOT NULL` | Entry timestamp |
-| `out_time` | `TIMESTAMPTZ` | `NULLABLE` | Exit timestamp (NULL while active) |
-| `status` | `ENUM` | `NOT NULL`, `DEFAULT 'ACTIVE'` | `ACTIVE`, `COMPLETED` |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT now()` | Session record creation time |
-
-*Indexes*: Index on `status`, composite index on `(vehicle_id, status)`.
-
-### 5. `bills` (`Bill`)
-Final billing receipt issued on vehicle checkout.
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `UUID` | `PRIMARY KEY`, default random | Unique receipt identifier |
-| `session_id` | `UUID` | `FK -> parking_sessions.id`, `UNIQUE`, `ON DELETE CASCADE` | 1-to-1 session link |
-| `duration_minutes` | `INTEGER` | `NOT NULL` | Calculated stay duration |
-| `rate_applied` | `DECIMAL(8,2)`| `NOT NULL` | Snapshot of hourly rate at checkout |
-| `amount` | `DECIMAL(10,2)`| `NOT NULL` | Total amount charged |
-| `generated_on` | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT now()` | Receipt issue timestamp |
-
-### 6. `admin_users` (`AdminUser`)
-Authentication and RBAC records for operators and managers.
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| `id` | `UUID` | `PRIMARY KEY`, default random | Unique user identifier |
-| `username` | `VARCHAR(50)` | `UNIQUE`, `NOT NULL` | Login username |
-| `password_hash`| `VARCHAR(255)`| `NOT NULL` | Salted bcrypt hash |
-| `role` | `ENUM` | `NOT NULL` (`ADMIN`, `OPERATOR`) | RBAC permission level |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT now()` | Account creation timestamp |
-
----
-
-## Custom Database Constraints and Rules
-
-Enforced directly in PostgreSQL via migration [`prisma/migrations/20260904000002_add_custom_constraints/migration.sql`](prisma/migrations/20260904000002_add_custom_constraints/migration.sql):
-
-1. **Timestamp Sanity (`CHECK` Constraint)**:
-   ```sql
-   ALTER TABLE "parking_sessions"
-   ADD CONSTRAINT "chk_parking_sessions_out_time"
-   CHECK ("out_time" IS NULL OR "out_time" > "in_time");
-   ```
-   *Guarantees a vehicle can never be recorded with an exit time earlier than or equal to its entry time.*
-
-2. **At Most One Active Session Per Vehicle (Partial Unique Index)**:
-   ```sql
-   CREATE UNIQUE INDEX "unique_active_vehicle_session"
-   ON "parking_sessions" ("vehicle_id")
-   WHERE "status" = 'ACTIVE';
-   ```
-   *Prevents duplicate entry for a vehicle that is already marked active inside the facility.*
-
-3. **Prevent Slot Double-Booking (Partial Unique Index)**:
-   ```sql
-   CREATE UNIQUE INDEX "unique_active_slot_session"
-   ON "parking_sessions" ("slot_id")
-   WHERE "status" = 'ACTIVE';
-   ```
-   *Guarantees two concurrent vehicles can never occupy the same slot simultaneously.*
-
----
-
-## Project Structure
-
-```
-.
-├── .env.example                                      # Environment variable connection template
-├── .gitignore                                         # Ignores .env, node_modules, logs
-├── package.json                                       # Node project metadata and scripts
-├── tsconfig.json                                      # TypeScript compiler options
-├── README.md                                          # Technical documentation
-├── prisma/
-│   ├── schema.prisma                                  # Declarative schema definition
-│   ├── seed.ts                                        # Idempotent seeding script
-│   └── migrations/                                    # Version-controlled migration history
-│       ├── migration_lock.toml
-│       ├── 20260904000001_init/
-│       │   └── migration.sql                          # Base DDL for tables, enums, FKs and indexes
-│       └── 20260904000002_add_custom_constraints/
-│           └── migration.sql                          # Raw SQL CHECK constraints and partial indexes
-└── test/
-    └── smoke.ts                                       # Comprehensive smoke-testing script
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or newer)
-- [PostgreSQL](https://www.postgresql.org/) (v14+ running locally or in Docker)
-
-### Environment Setup
-Create a `.env` file from the example template:
+#### Environment Setup
 ```bash
 cp .env.example .env
 ```
-Update `DATABASE_URL` in `.env` with your PostgreSQL credentials:
+Edit `.env`:
 ```env
-DATABASE_URL="postgresql://<USER>:<PASSWORD>@localhost:5432/<DATABASE_NAME>?schema=public"
+DATABASE_URL="postgresql://<USER>:<PASSWORD>@localhost:5432/<DB>?schema=public"
+JWT_SECRET="your-secret-key"
 ```
 
-### Installation and Migrations
-Install all dependencies:
+#### Install & Migrate
 ```bash
 npm install
-```
-Deploy the database migrations to your PostgreSQL instance:
-```bash
 npm run db:migrate
-```
-*(Or use `npx prisma migrate deploy` in CI/CD environments).*
-
-Generate the Prisma Client:
-```bash
 npm run db:generate
-```
-
-### Database Seeding
-Populate the database with idempotent baseline and test data:
-```bash
 npm run db:seed
 ```
-**Seeded data includes:**
-- Rates: `CAR` (40.00/hr) and `SCOOTER` (20.00/hr).
-- Slots: 10 vacant bays (`C-01` through `C-05`, `S-01` through `S-05`).
-- Vehicles: 4 sample vehicles (`KA-01-AB-1234`, `MH-12-CD-5678`, `DL-04-EF-9012`, `TN-09-GH-3456`).
-- Transactions: 2 completed parking sessions with matching computed bills.
-- Users: 1 administrator account (`username: admin`, bcrypt hashed password).
 
-### Visual Inspection (Prisma Studio)
-Launch Prisma Studio to visually inspect and manage tables in your web browser:
+#### Run Development Server
 ```bash
-npx prisma studio
+npm run dev        # Starts on http://localhost:3000
 ```
-Navigate to: **`http://localhost:5555`**
 
-### Running Verification Tests
-Execute the smoke test suite to programmatically verify relational integrity and custom PostgreSQL constraints:
-```bash
-npm run test:smoke
-```
-**Test Coverage:**
-- **Test 1**: Multi-table relational query (`Vehicle -> ParkingSession -> Slot and Bill`) via a single Prisma `include`.
-- **Test 2**: Database rejection of a second `ACTIVE` session for the same vehicle.
-- **Test 3**: Database rejection of slot double-booking (`ACTIVE` session on an already occupied slot).
-- **Test 4**: Database rejection of invalid checkout timestamps (`out_time <= in_time`).
+#### Available Backend Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start dev server with hot-reload |
+| `npm run build` | Compile TypeScript to `dist/` |
+| `npm start` | Run compiled production build |
+| `npm run db:migrate` | Run pending Prisma migrations |
+| `npm run db:generate` | Regenerate Prisma Client |
+| `npm run db:seed` | Seed baseline data |
+| `npm run db:reset` | Drop DB, re-migrate, re-seed |
+| `npm run test:smoke` | Run DB constraint verification suite |
+| `npm run test:api` | Run API integration tests |
 
 ---
 
-## Available Scripts
+## Admin Dashboard (Frontend)
 
-| Command | Action |
-| :--- | :--- |
-| `npm run db:migrate` | Runs pending Prisma migrations against the database. |
-| `npm run db:generate` | Re-generates the TypeScript Prisma Client from `schema.prisma`. |
-| `npm run db:seed` | Executes `prisma/seed.ts` to populate baseline data. |
-| `npm run db:reset` | Drops database, reapplies all migrations, and runs seed from scratch. |
-| `npm run test:smoke` | Runs the automated constraint and relationship verification suite. |
+A React + Vite + Tailwind CSS admin web application served from `frontend/`.
+
+### Admin Dashboard Features
+
+- **Live Slot Availability** — Real-time card view per location with car/scooter/total counts
+- **Operator Management** — Create operators (set username & password), edit, deactivate
+- **Parking Sessions** — Live view of active vehicles, historical session lookup
+- **Revenue Reports** — Daily/weekly/monthly revenue breakdown
+- **Rate Management** — Update hourly parking rates per vehicle type
+- **Site/Location Management** — Add and configure parking locations
+
+### Getting Started (Frontend)
+
+```bash
+cd frontend
+npm install
+npm run dev        # Starts on http://localhost:5173
+```
+
+The frontend proxies all `/api/v1` requests to the backend at `http://localhost:3000`.
+
+For a production build:
+```bash
+npm run build      # Outputs to frontend/dist/
+```
+
+---
+
+## Operator Android App
+
+A native Android application for gate-level parking operators. Located in `operator-app/`.
+
+> A pre-built debug APK is available at `frontend/public/operator-app.apk` and can be downloaded directly from the admin dashboard.
+
+### Android Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Language | Kotlin 2.0+ (JVM 17) |
+| UI | Jetpack Compose + Material 3 |
+| Camera | CameraX |
+| OCR | Google ML Kit Text Recognition (on-device) |
+| Local DB | Room 2.6+ (v2) |
+| Networking | Retrofit 2 + OkHttp 4 + Gson |
+| Background Sync | AndroidX WorkManager |
+| Secure Storage | EncryptedSharedPreferences (AES-256 GCM) |
+| Min SDK | 26 (Android 8.0+) |
+
+### Core Screens
+
+| Screen | Description |
+|---|---|
+| **Login** | Username/password login; offline fallback using cached credentials |
+| **Home Dashboard** | Assigned location name, live Car/Scooter/Total slot availability (dynamic from backend), today's entries/exits/revenue, gate entry/exit actions |
+| **Capture Entry** | Full-screen CameraX viewfinder + ML Kit OCR plate extraction, vehicle type selector, confirm entry |
+| **Capture Exit** | Plate lookup, session details, bill computation (ceiling-hour pricing), receipt screen |
+| **Active Sessions** | Live Room `Flow`-backed list of parked vehicles; unsynced entries show "Pending Sync" badge |
+| **Settings** | Profile editor (name, email), change password, app info |
+
+### Offline-First Architecture
+
+```
+┌────────────────────────────────────────────┐
+│             Jetpack Compose UI             │
+└────────────────────────────────────────────┘
+      ▲  Flow (reads)       │  User actions
+      │                     ▼
+┌──────────────┐    ┌──────────────────────┐
+│  Room DB     │◄───│  ParkingRepository   │
+│ (local truth)│    │  + AuthRepository    │
+└──────────────┘    └──────────────────────┘
+                              │ Writes outbox
+                              ▼
+┌────────────────────────────────────────────┐
+│          SyncWorker (WorkManager)          │
+│         + ConnectivityObserver             │
+└────────────────────────────────────────────┘
+                              │ POSTs when online
+                              ▼
+┌────────────────────────────────────────────┐
+│       Backend API (:3000/api/v1/...)       │
+└────────────────────────────────────────────┘
+```
+
+- **Outbox Pattern**: Entry/exit writes happen locally first; `SyncWorker` delivers them to the backend when connectivity is available.
+- **Idempotency**: Every action carries a client-generated UUID. Duplicate deliveries (retry after network drop) are safely deduplicated by the backend.
+- **Dynamic Slot Totals**: `carTotal`, `scooterTotal`, `totalSlots` are returned by the availability endpoint and cached in Room — no hardcoded values.
+
+### Room Database Entities (v2)
+
+| Entity | Key Fields |
+|---|---|
+| `location_assignment` | id, name, code, city, lastUpdated |
+| `slot_availability` | locationId, carVacant, carOccupied, scooterVacant, scooterOccupied, **carTotal, scooterTotal, totalSlots**, lastUpdated |
+| `rate_master` | vehicleType, ratePerHour, effectiveFrom |
+| `active_sessions` | id, vehicleNumber, vehicleType, slotCode, inTime, isPendingSync |
+| `pending_actions` | id, actionType, payloadJson, status, retryCount |
+| `receipts` | id, sessionId, amount, durationMinutes, isPendingConfirmation |
+
+### Getting Started (Android)
+
+#### Build
+```bash
+cd operator-app
+.\gradlew.bat assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
+```
+
+#### Install on Device via ADB
+```bash
+# Forward backend port to device
+adb reverse tcp:3000 tcp:3000
+
+# Install APK
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+#### Run Unit Tests
+```bash
+.\gradlew.bat testDebugUnitTest --no-daemon
+```
+
+#### Operator Account Setup
+
+Administrators create operator accounts via the Admin Dashboard (Operator Management page). The admin sets the initial username and password. Operators can later change their password and update their profile from the **Settings** screen in the app.
 
 ---
 
 ## License
+
 ISC
