@@ -38,7 +38,9 @@ export const Reports: React.FC = () => {
   const rangeParam = searchParams.get('range');
 
   const [reportType, setReportType] = useState<'Revenue' | 'Occupancy' | 'Duration' | 'Transactions'>('Revenue');
-  const [dateRange, setDateRange] = useState<string>('This Week');
+  const [dateRange, setDateRange] = useState<string>('All Time');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [reportData, setReportData] = useState<ReportData>(EMPTY_REPORT);
@@ -54,25 +56,31 @@ export const Reports: React.FC = () => {
     }
   }, [tabParam, rangeParam]);
 
-  const fetchReport = useCallback(async (type: string, range: string, siteId: string) => {
-    if (!siteId) return;
-    setIsLoading(true);
-    try {
-      const data = await api.get<ReportData>(
-        `/reports?type=${encodeURIComponent(type)}&range=${encodeURIComponent(range)}&siteId=${encodeURIComponent(siteId)}`
-      );
-      setReportData(data);
-    } catch (err) {
-      console.error('[Reports] fetch failed:', err);
-      setReportData({ ...EMPTY_REPORT, type: type as ReportData['type'] });
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const fetchReport = useCallback(
+    async (type: string, range: string, siteId: string, customStart?: string, customEnd?: string) => {
+      if (!siteId) return;
+      setIsLoading(true);
+      try {
+        let url = `/reports?type=${encodeURIComponent(type)}&range=${encodeURIComponent(range)}&siteId=${encodeURIComponent(siteId)}`;
+        if (range === 'Custom' && customStart && customEnd) {
+          url += `&startDate=${encodeURIComponent(customStart)}&endDate=${encodeURIComponent(customEnd)}`;
+        }
+        const data = await api.get<ReportData>(url);
+        setReportData(data);
+      } catch (err) {
+        console.error('[Reports] fetch failed:', err);
+        setReportData({ ...EMPTY_REPORT, type: type as ReportData['type'] });
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
-    fetchReport(reportType, dateRange, currentSiteId);
-  }, [reportType, dateRange, currentSiteId, fetchReport]);
+    if (dateRange === 'Custom' && (!startDate || !endDate)) return;
+    fetchReport(reportType, dateRange, currentSiteId, startDate, endDate);
+  }, [reportType, dateRange, currentSiteId, startDate, endDate, fetchReport]);
 
   const handleTabChange = (newType: 'Revenue' | 'Occupancy' | 'Duration' | 'Transactions') => {
     setReportType(newType);
@@ -347,14 +355,36 @@ export const Reports: React.FC = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto justify-end">
-          <div className="w-full sm:w-36">
+          {dateRange === 'Custom' && (
+            <div className="flex items-center gap-1.5 bg-neutral-50 px-2 py-1 rounded-control border border-neutral-200">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="text-xs bg-white border border-neutral-300 rounded px-1.5 py-1 text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                title="Start Date"
+              />
+              <span className="text-xs text-neutral-400">to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="text-xs bg-white border border-neutral-300 rounded px-1.5 py-1 text-neutral-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                title="End Date"
+              />
+            </div>
+          )}
+
+          <div className="w-full sm:w-44">
             <Select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
               options={[
-                { value: 'Today', label: 'Today' },
-                { value: 'This Week', label: 'This Week' },
+                { value: 'All Time', label: 'All Time' },
+                { value: 'Last 30 Days', label: 'Last 30 Days' },
                 { value: 'This Month', label: 'This Month' },
+                { value: 'This Week', label: 'This Week (7 Days)' },
+                { value: 'Today', label: 'Today (Hourly)' },
                 { value: 'Custom', label: 'Custom Range' },
               ]}
             />
@@ -373,6 +403,28 @@ export const Reports: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {!isLoading && currentReport.summary.totalTransactions === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-card p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-soft">
+          <div className="flex items-center gap-2.5">
+            <Activity className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              No completed parking sessions recorded during <strong>{dateRange}</strong> for{' '}
+              <strong>{currentSite?.name}</strong>.
+            </span>
+          </div>
+          {dateRange !== 'All Time' && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setDateRange('All Time')}
+              className="text-xs shrink-0 bg-white"
+            >
+              Switch to All Time History
+            </Button>
+          )}
+        </div>
+      )}
 
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4">
