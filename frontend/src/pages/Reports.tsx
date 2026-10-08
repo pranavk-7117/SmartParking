@@ -436,29 +436,29 @@ export const Reports: React.FC = () => {
               title="Total Revenue"
               value={`₹${currentReport.summary.totalRevenue.toLocaleString()}`}
               subtitle="in selected period"
-              trend={{ value: 12.5, isPositive: true }}
               icon={<Receipt className="w-5 h-5 text-primary" />}
             />
             <StatCard
               title="Peak Occupancy"
               value={`${currentReport.summary.peakOccupancyPct}%`}
-              subtitle="at peak hour (6 PM)"
-              trend={{ value: 4.2, isPositive: true }}
+              subtitle="highest concurrent utilisation"
               icon={<Percent className="w-5 h-5 text-accent" />}
               iconBg="bg-amber-50 text-accent"
             />
             <StatCard
               title="Avg Stay Duration"
-              value={`${Math.floor(currentReport.summary.avgDurationMinutes / 60)}h ${
-                currentReport.summary.avgDurationMinutes % 60
-              }m`}
+              value={
+                currentReport.summary.avgDurationMinutes > 0
+                  ? `${Math.floor(currentReport.summary.avgDurationMinutes / 60)}h ${currentReport.summary.avgDurationMinutes % 60}m`
+                  : '—'
+              }
               subtitle="across all categories"
               icon={<Clock className="w-5 h-5 text-success" />}
               iconBg="bg-emerald-50 text-success"
             />
             <StatCard
               title={reportType === 'Transactions' ? 'Total Volume' : 'Total Sessions'}
-              value={currentReport.summary.totalTransactions?.toLocaleString() || '1,074'}
+              value={(currentReport.summary.totalTransactions ?? 0).toLocaleString()}
               subtitle="completed check-outs"
               icon={<Activity className="w-5 h-5 text-primary" />}
             />

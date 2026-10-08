@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { VehicleType, SessionStatus } from '@prisma/client';
+import { VehicleType } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import prisma from '../lib/prisma';
 
@@ -10,7 +10,7 @@ async function resolveLocationId(siteIdentifier?: string): Promise<string | unde
   const loc = await prisma.location.findFirst({
     where: {
       OR: [
-        { id: siteIdentifier.includes('-') && siteIdentifier.length === 36 ? siteIdentifier : undefined },
+        { id: siteIdentifier.length === 36 && siteIdentifier.includes('-') ? siteIdentifier : undefined },
         { code: siteIdentifier },
       ],
     },
@@ -19,154 +19,203 @@ async function resolveLocationId(siteIdentifier?: string): Promise<string | unde
 }
 
 /**
+ * Compute the date window based on the `range` query parameter.
+ * Returns { from, to } in UTC.
+ */
+function getDateWindow(range: string): { from: Date; to: Date } {
+  const to = new Date();
+  const from = new Date();
+
+  if (range === 'Today') {
+    from.setHours(0, 0, 0, 0);
+  } else if (range === 'This Month') {
+    from.setDate(1);
+    from.setHours(0, 0, 0, 0);
+  } else {
+    // Default: This Week (last 7 days)
+    from.setDate(from.getDate() - 6);
+    from.setHours(0, 0, 0, 0);
+  }
+
+  return { from, to };
+}
+
+/**
  * GET /api/v1/reports
- * Computes dynamic reports for Revenue, Occupancy, Duration, and Transactions
+ * Returns live data for Revenue, Occupancy, Duration, and Transactions.
+ * No hardcoded fallbacks — everything comes from the database.
  */
 reportsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     const siteQuery = req.query.siteId as string | undefined;
-    const type = ((req.query.type as string | undefined) ?? 'Revenue') as 'Revenue' | 'Occupancy' | 'Duration' | 'Transactions';
+    const range = (req.query.range as string | undefined) ?? 'This Week';
+    const type = ((req.query.type as string | undefined) ?? 'Revenue') as
+      | 'Revenue'
+      | 'Occupancy'
+      | 'Duration'
+      | 'Transactions';
+
     const locationId = await resolveLocationId(siteQuery);
+    const { from, to } = getDateWindow(range);
 
     const siteFilter = locationId ? { slot: { locationId } } : {};
 
-    // Load bills and sessions
+    // ── Shared: fetch all bills in window ───────────────────────────────────
     const bills = await prisma.bill.findMany({
       where: {
+        generatedOn: { gte: from, lte: to },
         session: siteFilter,
       },
       include: {
-        session: {
-          include: {
-            vehicle: true,
-            slot: { include: { location: true } },
-          },
-        },
+        session: { include: { vehicle: true } },
       },
-      orderBy: { generatedOn: 'desc' },
+      orderBy: { generatedOn: 'asc' },
     });
 
     const totalRevenue = bills.reduce((acc, b) => acc + parseFloat(b.amount.toString()), 0);
-    const avgDurationMinutes = bills.length > 0
-      ? Math.round(bills.reduce((acc, b) => acc + b.durationMinutes, 0) / bills.length)
-      : 0;
+    const avgDurationMinutes =
+      bills.length > 0
+        ? Math.round(bills.reduce((acc, b) => acc + b.durationMinutes, 0) / bills.length)
+        : 0;
+    const totalTransactions = bills.length;
 
-    // Build last 7 days labels
+    // Compute real peak occupancy % from sessions in this window
+    const sessionsInWindow = await prisma.parkingSession.findMany({
+      where: {
+        inTime: { gte: from, lte: to },
+        ...(locationId ? { slot: { locationId } } : {}),
+      },
+      include: { slot: true },
+    });
+
+    let totalSlots = 0;
+    if (locationId) {
+      totalSlots = await prisma.slot.count({ where: { locationId } });
+    } else {
+      totalSlots = await prisma.slot.count();
+    }
+
+    // Peak occupancy: group sessions by hour and find the max concurrent
+    const hourCounts = new Map<number, number>();
+    for (const s of sessionsInWindow) {
+      const inHour = s.inTime.getHours();
+      const outHour = s.outTime ? s.outTime.getHours() : new Date().getHours();
+      for (let h = inHour; h <= outHour; h++) {
+        hourCounts.set(h, (hourCounts.get(h) ?? 0) + 1);
+      }
+    }
+    const maxConcurrent = hourCounts.size > 0 ? Math.max(...hourCounts.values()) : 0;
+    const peakOccupancyPct =
+      totalSlots > 0 ? Math.min(100, Math.round((maxConcurrent / totalSlots) * 100)) : 0;
+
+    // ── Build day labels ─────────────────────────────────────────────────────
+    const dayMs = 24 * 60 * 60 * 1000;
+    const diffDays = Math.round((to.getTime() - from.getTime()) / dayMs) + 1;
     const days: string[] = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    for (let i = diffDays - 1; i >= 0; i--) {
+      const d = new Date(to.getTime() - i * dayMs);
       days.push(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
     }
 
+    const summary = {
+      totalRevenue,
+      peakOccupancyPct,
+      avgDurationMinutes,
+      totalTransactions,
+    };
+
+    // ── Revenue ──────────────────────────────────────────────────────────────
     if (type === 'Revenue') {
-      // Group revenue by day
-      const revenueMap = new Map<string, number>();
-      for (const d of days) revenueMap.set(d, 0);
+      const carRevMap = new Map<string, number>();
+      const scooterRevMap = new Map<string, number>();
+      for (const d of days) { carRevMap.set(d, 0); scooterRevMap.set(d, 0); }
 
       for (const b of bills) {
         const dStr = b.generatedOn.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-        if (revenueMap.has(dStr)) {
-          revenueMap.set(dStr, revenueMap.get(dStr)! + parseFloat(b.amount.toString()));
+        const amount = parseFloat(b.amount.toString());
+        const isScooter = b.session.vehicle.vehicleType === VehicleType.SCOOTER;
+        if (isScooter) {
+          scooterRevMap.set(dStr, (scooterRevMap.get(dStr) ?? 0) + amount);
+        } else {
+          carRevMap.set(dStr, (carRevMap.get(dStr) ?? 0) + amount);
         }
       }
 
-      // If database has limited historical days, provide realistic baseline figures
       const dataPoints = days.map((day) => ({
         label: day,
-        value: revenueMap.get(day) && revenueMap.get(day)! > 0 ? revenueMap.get(day)! : Math.max(120, Math.round(totalRevenue * 0.15)),
+        value: Math.round(carRevMap.get(day) ?? 0),
+        secondaryValue: Math.round(scooterRevMap.get(day) ?? 0),
       }));
 
-      return res.json({
-        type: 'Revenue',
-        dataPoints,
-        summary: {
-          totalRevenue: Math.max(totalRevenue, 1420),
-          peakOccupancyPct: 78,
-          avgDurationMinutes: Math.max(avgDurationMinutes, 84),
-        },
-      });
+      return res.json({ type: 'Revenue', dataPoints, summary });
     }
 
+    // ── Occupancy ────────────────────────────────────────────────────────────
     if (type === 'Occupancy') {
-      const slots = await prisma.slot.findMany({
-        where: locationId ? { locationId } : undefined,
+      const checkHours = [8, 10, 12, 14, 16, 18, 20];
+      const dataPoints = checkHours.map((hour) => {
+        const count = hourCounts.get(hour) ?? 0;
+        const pct = totalSlots > 0 ? Math.min(100, Math.round((count / totalSlots) * 100)) : 0;
+        return {
+          label: `${String(hour).padStart(2, '0')}:00`,
+          value: pct,
+        };
       });
-      const totalSlots = slots.length || 60;
-      const occupiedSlots = slots.filter((s) => s.status === 'OCCUPIED').length;
-      const currentPct = Math.round((occupiedSlots / totalSlots) * 100);
 
-      const hours = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-      const dataPoints = hours.map((hour, idx) => ({
-        label: hour,
-        value: [35, 62, 85, 78, 92, 65, 40][idx] ?? currentPct,
-      }));
-
-      return res.json({
-        type: 'Occupancy',
-        dataPoints,
-        summary: {
-          totalRevenue: Math.max(totalRevenue, 1420),
-          peakOccupancyPct: 92,
-          avgDurationMinutes: Math.max(avgDurationMinutes, 84),
-        },
-      });
+      return res.json({ type: 'Occupancy', dataPoints, summary });
     }
 
+    // ── Duration ─────────────────────────────────────────────────────────────
     if (type === 'Duration') {
       const ranges = [
-        { label: '< 1 hr', min: 0, max: 60, count: 0 },
-        { label: '1–2 hrs', min: 61, max: 120, count: 0 },
-        { label: '2–4 hrs', min: 121, max: 240, count: 0 },
-        { label: '> 4 hrs', min: 241, max: 99999, count: 0 },
+        { label: '< 1 hr', min: 0, max: 60, cars: 0, scooters: 0 },
+        { label: '1–2 hrs', min: 61, max: 120, cars: 0, scooters: 0 },
+        { label: '2–4 hrs', min: 121, max: 240, cars: 0, scooters: 0 },
+        { label: '> 4 hrs', min: 241, max: 99999, cars: 0, scooters: 0 },
       ];
 
       for (const b of bills) {
+        const isSc = b.session.vehicle.vehicleType === VehicleType.SCOOTER;
         for (const r of ranges) {
           if (b.durationMinutes >= r.min && b.durationMinutes <= r.max) {
-            r.count++;
+            if (isSc) r.scooters++;
+            else r.cars++;
             break;
           }
         }
       }
 
-      const totalB = Math.max(bills.length, 1);
       const dataPoints = ranges.map((r) => ({
         label: r.label,
-        value: r.count > 0 ? r.count : Math.round(totalB * 0.25),
-        count: r.count,
+        value: r.cars,
+        secondaryValue: r.scooters,
       }));
 
-      return res.json({
-        type: 'Duration',
-        dataPoints,
-        summary: {
-          totalRevenue: Math.max(totalRevenue, 1420),
-          peakOccupancyPct: 88,
-          avgDurationMinutes: Math.max(avgDurationMinutes, 84),
-        },
-      });
+      return res.json({ type: 'Duration', dataPoints, summary });
     }
 
-    // Transactions type
-    const carBills = bills.filter((b) => b.session.vehicle.vehicleType === VehicleType.CAR).length;
-    const scooterBills = bills.filter((b) => b.session.vehicle.vehicleType === VehicleType.SCOOTER).length;
+    // ── Transactions ─────────────────────────────────────────────────────────
+    const carTxMap = new Map<string, number>();
+    const scooterTxMap = new Map<string, number>();
+    for (const d of days) { carTxMap.set(d, 0); scooterTxMap.set(d, 0); }
 
-    const dataPoints = days.map((day, idx) => ({
+    for (const b of bills) {
+      const dStr = b.generatedOn.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      const isSc = b.session.vehicle.vehicleType === VehicleType.SCOOTER;
+      if (isSc) {
+        scooterTxMap.set(dStr, (scooterTxMap.get(dStr) ?? 0) + 1);
+      } else {
+        carTxMap.set(dStr, (carTxMap.get(dStr) ?? 0) + 1);
+      }
+    }
+
+    const dataPoints = days.map((day) => ({
       label: day,
-      value: [18, 24, 32, 29, 38, 22, 19][idx] ?? Math.max(carBills, 15),
-      secondaryValue: [12, 15, 20, 18, 25, 14, 11][idx] ?? Math.max(scooterBills, 10),
+      value: carTxMap.get(day) ?? 0,
+      secondaryValue: scooterTxMap.get(day) ?? 0,
     }));
 
-    res.json({
-      type: 'Transactions',
-      dataPoints,
-      summary: {
-        totalRevenue: Math.max(totalRevenue, 1420),
-        peakOccupancyPct: 88,
-        avgDurationMinutes: Math.max(avgDurationMinutes, 84),
-      },
-    });
+    res.json({ type: 'Transactions', dataPoints, summary });
   } catch (err) {
     next(err);
   }
