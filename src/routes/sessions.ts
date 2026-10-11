@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   SessionStatus,
+  SlotStatus,
   VehicleType,
   ParkingSession,
   Vehicle,

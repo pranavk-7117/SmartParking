@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { SlotStatus, SessionStatus } from '@prisma/client';
+import { SlotStatus, SessionStatus, VehicleType } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
@@ -86,7 +86,7 @@ exitsRouter.post('/', requireAuth, async (req, res, next) => {
     });
     let ratePerHour = rateRow ? parseFloat(rateRow.ratePerHour.toString()) : 0;
     if (!ratePerHour) {
-      const loc = session.slot.location ?? (await prisma.location.findUnique({ where: { id: session.slot.locationId } }));
+      const loc = session.slot.locationId ? await prisma.location.findUnique({ where: { id: session.slot.locationId } }) : null;
       const isCar = session.vehicle.vehicleType === VehicleType.CAR;
       ratePerHour = isCar
         ? (loc?.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30)

@@ -82,7 +82,7 @@ notificationsRouter.post('/', requireAuth, async (req, res, next) => {
  */
 notificationsRouter.delete('/:id', requireAuth, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     await prisma.notification.delete({ where: { id } });
     res.json({ message: 'Notification dismissed' });
   } catch (err) {
