@@ -1,9 +1,21 @@
 import { Router } from 'express';
-import { VehicleType, SessionStatus } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { z } from 'zod';
+import { VehicleType } from '@prisma/client';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import prisma from '../lib/prisma';
 
 export const reportsRouter = Router();
+
+// Reports are strictly Admin only
+reportsRouter.use(requireAuth, requireAdmin);
+
+const reportQuerySchema = z.object({
+  siteId: z.string().optional(),
+  range: z.enum(['Today', 'This Week', 'This Month', 'Last 30 Days', 'All Time']).optional().default('All Time'),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  type: z.enum(['Revenue', 'Occupancy', 'Duration', 'Transactions']).optional().default('Revenue'),
+});
 
 async function resolveLocationId(siteIdentifier?: string): Promise<string | undefined> {
   if (!siteIdentifier || siteIdentifier === 'all') return undefined;
@@ -97,7 +109,7 @@ async function getDateWindow(
 /**
  * Format a Date to a clean user-facing label (e.g. "09 Oct" or "Today")
  */
-function formatDateLabel(d: Date, isTodayFlag?: boolean): string {
+function formatDateLabel(d: Date): string {
   const now = new Date();
   if (
     d.getDate() === now.getDate() &&
@@ -111,20 +123,12 @@ function formatDateLabel(d: Date, isTodayFlag?: boolean): string {
 
 /**
  * GET /api/v1/reports
- * Live reports dynamically populated by real vehicles and transactions.
- * Only displays dates that actually have activity or data — no filler zero rows.
+ * Live reports dynamically populated by real vehicles and transactions (Admin Only).
  */
-reportsRouter.get('/', requireAuth, async (req, res, next) => {
+reportsRouter.get('/', async (req, res, next) => {
   try {
-    const siteQuery = req.query.siteId as string | undefined;
-    const range = (req.query.range as string | undefined) ?? 'All Time';
-    const startDateStr = req.query.startDate as string | undefined;
-    const endDateStr = req.query.endDate as string | undefined;
-    const type = ((req.query.type as string | undefined) ?? 'Revenue') as
-      | 'Revenue'
-      | 'Occupancy'
-      | 'Duration'
-      | 'Transactions';
+    const validatedQuery = reportQuerySchema.parse(req.query);
+    const { siteId: siteQuery, range, startDate: startDateStr, endDate: endDateStr, type } = validatedQuery;
 
     const locationId = await resolveLocationId(siteQuery);
     const siteFilter = locationId ? { slot: { locationId } } : {};
@@ -168,7 +172,6 @@ reportsRouter.get('/', requireAuth, async (req, res, next) => {
         ? Math.round(bills.reduce((acc, b) => acc + b.durationMinutes, 0) / bills.length)
         : 0;
 
-    // Total transactions = total sessions created/processed in this period
     const totalTransactions = sessions.length;
 
     // ── Slot capacity for Occupancy ──────────────────────────────────────────
@@ -199,10 +202,9 @@ reportsRouter.get('/', requireAuth, async (req, res, next) => {
       totalTransactions,
     };
 
-    // ── 1. TRANSACTIONS (Vehicle entries & checkouts) ─────────────────────────
+    // ── 1. TRANSACTIONS ──────────────────────────────────────────────────────
     if (type === 'Transactions') {
       if (isToday) {
-        // Hourly breakdown for Today
         const hours = [8, 10, 12, 14, 16, 18, 20, 22];
         const dataPoints = hours.map((hour) => {
           const carsInHour = sessions.filter(
@@ -226,11 +228,7 @@ reportsRouter.get('/', requireAuth, async (req, res, next) => {
         return res.json({ type: 'Transactions', dataPoints, summary });
       }
 
-      // Group sessions by day: key = YYYY-MM-DD
-      const dayMap = new Map<
-        string,
-        { date: Date; cars: number; scooters: number }
-      >();
+      const dayMap = new Map<string, { date: Date; cars: number; scooters: number }>();
 
       for (const s of sessions) {
         const key = s.inTime.toISOString().slice(0, 10);
@@ -245,8 +243,6 @@ reportsRouter.get('/', requireAuth, async (req, res, next) => {
         }
       }
 
-      // If user is viewing a range that includes today and today has no sessions yet,
-      // we only include days that actually had vehicles added.
       const sortedKeys = Array.from(dayMap.keys()).sort();
       const dataPoints = sortedKeys.map((key) => {
         const item = dayMap.get(key)!;
@@ -287,13 +283,8 @@ reportsRouter.get('/', requireAuth, async (req, res, next) => {
         return res.json({ type: 'Revenue', dataPoints, summary });
       }
 
-      // Group bills AND sessions with activity by day
-      const dayMap = new Map<
-        string,
-        { date: Date; carRev: number; scooterRev: number }
-      >();
+      const dayMap = new Map<string, { date: Date; carRev: number; scooterRev: number }>();
 
-      // Populate from bills
       for (const b of bills) {
         const key = b.generatedOn.toISOString().slice(0, 10);
         if (!dayMap.has(key)) {
@@ -308,7 +299,6 @@ reportsRouter.get('/', requireAuth, async (req, res, next) => {
         }
       }
 
-      // Also ensure any day with active sessions entered is represented
       for (const s of sessions) {
         const key = s.inTime.toISOString().slice(0, 10);
         if (!dayMap.has(key)) {

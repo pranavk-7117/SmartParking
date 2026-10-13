@@ -11,7 +11,7 @@ async function runSmokeTests() {
     // -------------------------------------------------------------
     console.log('▶ Test 1: Query vehicle -> session -> bill chain with single Prisma `include` query...');
     const vehicleWithHistory = await prisma.vehicle.findUnique({
-      where: { vehicleNumber: 'KA-01-AB-1234' },
+      where: { vehicleNumber: 'MH14JK1234' },
       include: {
         sessions: {
           include: {
@@ -51,25 +51,32 @@ async function runSmokeTests() {
       },
     });
 
-    const slot1 = await prisma.slot.upsert({
-      where: { locationCode: 'T-01' },
-      update: {},
-      create: {
-        locationCode: 'T-01',
-        slotType: VehicleType.CAR,
-        status: SlotStatus.VACANT,
-      },
-    });
+    const testLocation = await prisma.location.findFirst();
+    const locId = testLocation?.id;
 
-    const slot2 = await prisma.slot.upsert({
-      where: { locationCode: 'T-02' },
-      update: {},
-      create: {
-        locationCode: 'T-02',
-        slotType: VehicleType.CAR,
-        status: SlotStatus.VACANT,
-      },
-    });
+    let slot1 = await prisma.slot.findFirst({ where: { locationId: locId, locationCode: 'T-01' } });
+    if (!slot1) {
+      slot1 = await prisma.slot.create({
+        data: {
+          locationId: locId,
+          locationCode: 'T-01',
+          slotType: VehicleType.CAR,
+          status: SlotStatus.VACANT,
+        },
+      });
+    }
+
+    let slot2 = await prisma.slot.findFirst({ where: { locationId: locId, locationCode: 'T-02' } });
+    if (!slot2) {
+      slot2 = await prisma.slot.create({
+        data: {
+          locationId: locId,
+          locationCode: 'T-02',
+          slotType: VehicleType.CAR,
+          status: SlotStatus.VACANT,
+        },
+      });
+    }
 
     // Clean any prior test active sessions
     await prisma.parkingSession.deleteMany({

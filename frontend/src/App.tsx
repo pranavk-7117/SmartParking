@@ -29,6 +29,7 @@ export const App: React.FC = () => {
             <Routes>
               {/* Public Standalone Fullscreen Kiosk Route per §3.13 */}
               <Route path="/display" element={<KioskDisplay />} />
+              <Route path="/display/:siteId" element={<KioskDisplay />} />
 
               {/* Login Route per §3.1 */}
               <Route path="/login" element={<Login />} />

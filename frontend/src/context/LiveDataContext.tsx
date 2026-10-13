@@ -66,6 +66,9 @@ interface ApiSession {
   amount?: number | null;
   rateApplied?: number;
   status: string;
+  voidReason?: string | null;
+  voidedAt?: string | null;
+  voidedBy?: string | null;
 }
 
 interface ApiRate {
@@ -151,9 +154,17 @@ function mapSlot(a: ApiSlot): ParkingSlot {
 }
 
 function mapSession(a: ApiSession): ParkingSession {
+  let status: 'Active' | 'Completed' | 'Voided' = 'Completed';
+  if (a.status === 'Active' || a.status === 'ACTIVE') {
+    status = 'Active';
+  } else if (a.status === 'VOIDED' || a.status === 'Voided') {
+    status = 'Voided';
+  }
+
   return {
     id: a.id,
     siteId: a.siteId,
+    siteName: a.siteName,
     vehicleNumber: a.vehicleNumber,
     category: (a.category === 'Car' || a.category === 'CAR') ? 'Car' : 'Scooter',
     slotId: a.slotId,
@@ -161,8 +172,11 @@ function mapSession(a: ApiSession): ParkingSession {
     outTime: a.outTime,
     durationMinutes: a.durationMinutes,
     amount: a.amount,
-    status: a.status === 'Active' || a.status === 'ACTIVE' ? 'Active' : 'Completed',
+    status,
     rateApplied: a.rateApplied,
+    voidReason: a.voidReason,
+    voidedAt: a.voidedAt,
+    voidedBy: a.voidedBy,
   };
 }
 
@@ -253,6 +267,7 @@ interface LiveDataContextType {
   updateOperator: (operatorId: string, data: Partial<{ name: string; contact: string; email: string; employeeId: string; shiftTime: string; notes: string; password: string }>) => Promise<void>;
   reassignOperatorSite: (operatorId: string, newSiteId: string, reason?: string) => void;
   terminateOperator: (operatorId: string) => void;
+  voidSession: (sessionId: string, reason: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   dismissAlert: (alertId: string) => void;
   refresh: () => void;
@@ -315,7 +330,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
         await Promise.all([
           api.get<ApiSite[]>('/sites'),
           api.get<ApiSlot[]>('/slots'),
-          api.get<ApiSession[]>('/sessions'),
+          api.get<ApiSession[]>('/sessions?limit=200'),
           api.get<ApiRate[]>('/rates'),
           api.get<ApiRateHistory[]>('/rates/history'),
           api.get<ApiOperator[]>('/operators'),
@@ -684,25 +699,41 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
     [triggerFlash]
   );
 
-  const deleteSession = useCallback(
-    async (sessionId: string) => {
-      await api.delete(`/sessions/${sessionId}`);
-      setAllSessions((prev) => {
-        const target = prev.find((s) => s.id === sessionId);
+  const voidSession = useCallback(
+    async (sessionId: string, reason: string) => {
+      await api.post(`/sessions/${sessionId}/void`, { reason });
+      setAllSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== sessionId) return s;
+          return {
+            ...s,
+            status: 'Voided',
+            voidReason: reason,
+            voidedAt: new Date().toISOString(),
+          };
+        })
+      );
+      setAllSlots((sPrev) => {
+        const target = allSessions.find((s) => s.id === sessionId);
         if (target && target.status === 'Active') {
-          setAllSlots((sPrev) =>
-            sPrev.map((sl) =>
-              sl.locationCode === target.slotId || sl.id === target.slotId
-                ? { ...sl, status: 'Vacant', currentVehicleNumber: undefined, currentSessionId: undefined }
-                : sl
-            )
+          return sPrev.map((sl) =>
+            sl.locationCode === target.slotId || sl.id === target.slotId
+              ? { ...sl, status: 'Vacant', currentVehicleNumber: undefined, currentSessionId: undefined }
+              : sl
           );
         }
-        return prev.filter((s) => s.id !== sessionId);
+        return sPrev;
       });
       triggerFlash();
     },
-    [triggerFlash]
+    [allSessions, triggerFlash]
+  );
+
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      await voidSession(sessionId, 'Direct cancellation by administrator');
+    },
+    [voidSession]
   );
 
   const dismissAlert = useCallback((alertId: string) => {
@@ -749,6 +780,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
         updateOperator,
         reassignOperatorSite,
         terminateOperator,
+        voidSession,
         deleteSession,
         dismissAlert,
         refresh,

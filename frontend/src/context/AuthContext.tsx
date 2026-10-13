@@ -1,17 +1,37 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserAccount } from '../types';
-import { api, clearToken, saveToken, saveUser, loadUser } from '../api/client';
+import { api, clearToken, saveToken, saveUser, loadUser, ApiError } from '../api/client';
 
-interface LoginResponse {
+interface LoginSuccessResponse {
   token: string;
+  access_token?: string;
+  mfaRequired?: false;
+  mustChangePassword?: boolean;
   user: {
     id: string;
     username: string;
     name: string;
     role: string;
     status: string;
+    mustChangePassword?: boolean;
     lastLogin?: string;
   };
+}
+
+interface MfaChallengeResponse {
+  mfaRequired: true;
+  mfaPendingToken: string;
+  expiresInSeconds: number;
+}
+
+type AuthApiResponse = LoginSuccessResponse | MfaChallengeResponse;
+
+export interface LoginResult {
+  success: boolean;
+  mfaRequired?: boolean;
+  mfaPendingToken?: string;
+  mustChangePassword?: boolean;
+  error?: string;
 }
 
 interface AuthContextType {
@@ -20,8 +40,9 @@ interface AuthContextType {
   failedAttempts: number;
   isLocked: boolean;
   lockoutRemainingSeconds: number;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  login: (username: string, password: string) => Promise<LoginResult>;
+  verifyMfaLogin: (mfaPendingToken: string, code: string) => Promise<LoginResult>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -51,74 +72,122 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => clearInterval(interval);
   }, [lockoutTime]);
 
+  const handleSuccessfulAuth = (data: LoginSuccessResponse): LoginResult => {
+    const user: UserAccount = {
+      id: data.user.id,
+      name: data.user.name ?? data.user.username,
+      username: data.user.username,
+      role: 'admin',
+      status: (data.user.status === 'Active' ? 'Active' : 'Locked') as 'Active' | 'Locked',
+      lastLogin: new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+
+    saveToken(data.access_token || data.token);
+    saveUser(user);
+    setCurrentUser(user);
+    setFailedAttempts(0);
+    setLockoutTime(null);
+    setLockoutRemainingSeconds(0);
+
+    return {
+      success: true,
+      mustChangePassword: data.mustChangePassword || data.user.mustChangePassword,
+    };
+  };
+
   const login = async (
     username: string,
     password: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<LoginResult> => {
     if (isLocked) {
-      return { success: false, error: 'Account is temporarily locked. Please try again later.' };
+      return {
+        success: false,
+        error: `Account is temporarily locked. Please try again in ${lockoutRemainingSeconds}s.`,
+      };
     }
 
     try {
-      const data = await api.post<LoginResponse>('/auth/login', {
+      const data = await api.post<AuthApiResponse>('/auth/login', {
         username: username.trim(),
         password,
       });
 
-      const user: UserAccount = {
-        id: data.user.id,
-        name: data.user.name ?? data.user.username,
-        username: data.user.username,
-        role: 'admin',
-        status: (data.user.status === 'Active' ? 'Active' : 'Locked') as 'Active' | 'Locked',
-        lastLogin: new Date().toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      };
+      if (data.mfaRequired) {
+        return {
+          success: false,
+          mfaRequired: true,
+          mfaPendingToken: data.mfaPendingToken,
+        };
+      }
 
-      saveToken(data.token);
-      saveUser(user);
-      setCurrentUser(user);
-      setFailedAttempts(0);
-      return { success: true };
+      return handleSuccessfulAuth(data);
     } catch (err: unknown) {
-      const status = (err as { status?: number })?.status;
+      const apiErr = err as ApiError;
+      const status = apiErr?.status;
+
+      if (status === 429) {
+        const retryAfter = apiErr.retryAfter || 900;
+        const lockUntil = Date.now() + retryAfter * 1000;
+        setLockoutTime(lockUntil);
+        setLockoutRemainingSeconds(retryAfter);
+        return {
+          success: false,
+          error: `Too many failed login attempts. Account temporarily locked for ${Math.ceil(retryAfter / 60)} minutes.`,
+        };
+      }
 
       if (status === 403) {
         return {
           success: false,
-          error: 'Your account has been terminated. Please contact the system administrator.',
+          error: apiErr.message || 'Access forbidden for this account type.',
         };
       }
 
       const nextAttempts = failedAttempts + 1;
       setFailedAttempts(nextAttempts);
 
-      if (nextAttempts >= 5) {
-        const lockUntil = Date.now() + 5 * 60 * 1000;
-        setLockoutTime(lockUntil);
-        setLockoutRemainingSeconds(300);
-        return {
-          success: false,
-          error: 'Too many failed login attempts. Account temporarily locked for 5 minutes.',
-        };
-      }
-
       return {
         success: false,
-        error: 'Invalid username or password. Please verify credentials.',
+        error: apiErr.message || 'Invalid username or password. Please verify credentials.',
       };
     }
   };
 
-  const logout = () => {
-    clearToken();
-    setCurrentUser(null);
-    setFailedAttempts(0);
+  const verifyMfaLogin = async (
+    mfaPendingToken: string,
+    code: string
+  ): Promise<LoginResult> => {
+    try {
+      const data = await api.post<LoginSuccessResponse>('/auth/mfa/login', {
+        mfaPendingToken,
+        code: code.trim(),
+      });
+      return handleSuccessfulAuth(data);
+    } catch (err: unknown) {
+      const apiErr = err as ApiError;
+      return {
+        success: false,
+        error: apiErr.message || 'Invalid two-factor authentication or recovery code.',
+      };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout', {});
+    } catch {
+      // Ignore network errors on logout
+    } finally {
+      clearToken();
+      setCurrentUser(null);
+      setFailedAttempts(0);
+    }
   };
 
   return (
@@ -130,6 +199,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isLocked,
         lockoutRemainingSeconds,
         login,
+        verifyMfaLogin,
         logout,
       }}
     >

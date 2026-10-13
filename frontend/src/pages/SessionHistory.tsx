@@ -7,15 +7,15 @@ import {
   FileSpreadsheet,
   Printer,
   Eye,
-  Trash2,
+  Ban,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
 import { useToast } from '../context/ToastContext';
 import { Table, Column } from '../components/common/Table';
-import { SearchInput, Select } from '../components/common/Input';
+import { SearchInput, Select, Input } from '../components/common/Input';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
-import { ConfirmationModal } from '../components/common/Modal';
+import { Modal } from '../components/common/Modal';
 import { ParkingSession } from '../types';
 import { exportToCSV, exportToPDF } from '../utils/exportUtils';
 
@@ -39,23 +39,24 @@ function formatDateTime(str?: string | null): string {
 
 export const SessionHistory: React.FC = () => {
   const navigate = useNavigate();
-  const { sessions, currentSite, deleteSession } = useLiveData();
+  const { sessions, currentSite, voidSession } = useLiveData();
   const { showToast } = useToast();
 
-  const [sessionToDelete, setSessionToDelete] = useState<ParkingSession | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [sessionToVoid, setSessionToVoid] = useState<ParkingSession | null>(null);
+  const [voidReason, setVoidReason] = useState('Accidental double-scan at gate');
+  const [isVoiding, setIsVoiding] = useState(false);
 
-  const handleDeleteConfirm = async () => {
-    if (!sessionToDelete) return;
-    setIsDeleting(true);
+  const handleVoidConfirm = async () => {
+    if (!sessionToVoid || !voidReason.trim()) return;
+    setIsVoiding(true);
     try {
-      await deleteSession(sessionToDelete.id);
-      showToast(`Vehicle ${sessionToDelete.vehicleNumber} session deleted successfully.`, 'success');
-      setSessionToDelete(null);
-    } catch (err) {
-      showToast('Failed to delete session', 'error');
+      await voidSession(sessionToVoid.id, voidReason.trim());
+      showToast(`Vehicle ${sessionToVoid.vehicleNumber} session voided successfully.`, 'success');
+      setSessionToVoid(null);
+    } catch {
+      showToast('Failed to void session', 'error');
     } finally {
-      setIsDeleting(false);
+      setIsVoiding(false);
     }
   };
 
@@ -65,11 +66,11 @@ export const SessionHistory: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('All');
 
-  // Sorting state per §3.6.1
+  // Sorting state
   const [sortColumn, setSortColumn] = useState<string>('inTime');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // Pagination state per §3.5 (25/50/100)
+  // Pagination state (25/50/100)
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -139,6 +140,7 @@ export const SessionHistory: React.FC = () => {
       'Duration (min)',
       'Amount (INR)',
       'Status',
+      'Void Reason',
     ];
     const rows = processedSessions.map((s) => [
       s.id,
@@ -150,6 +152,7 @@ export const SessionHistory: React.FC = () => {
       s.durationMinutes || 0,
       s.amount || 0,
       s.status,
+      s.voidReason || '',
     ]);
     exportToCSV(`parking_sessions_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
     showToast('Exported sessions to CSV file successfully.', 'success');
@@ -163,8 +166,8 @@ export const SessionHistory: React.FC = () => {
       s.category,
       s.slotId,
       s.inTime,
-      s.outTime || '— Active —',
-      s.durationMinutes ? `${Math.floor(s.durationMinutes / 60)}h ${s.durationMinutes % 60}m` : 'Active',
+      s.outTime || (s.status === 'Voided' ? '— Voided —' : '— Active —'),
+      s.durationMinutes ? `${Math.floor(s.durationMinutes / 60)}h ${s.durationMinutes % 60}m` : s.status,
       s.amount ? `INR ${s.amount}` : '—',
       s.status,
     ]);
@@ -173,11 +176,12 @@ export const SessionHistory: React.FC = () => {
       filename: `parking_sessions_${new Date().toISOString().slice(0, 10)}.pdf`,
       title: 'Parking Sessions Audit Trail',
       siteName: currentSite?.name,
-      dateRange: dateFilter === 'Today' ? '04-Sep-2026' : dateFilter === 'Yesterday' ? '03-Sep-2026' : 'All Recorded Time',
+      dateRange: dateFilter === 'Today' ? 'Today' : dateFilter === 'Yesterday' ? 'Yesterday' : 'All Recorded Time',
       summaryStats: [
         { label: 'Total Sessions', value: processedSessions.length },
         { label: 'Completed', value: processedSessions.filter((s) => s.status === 'Completed').length },
         { label: 'Active', value: processedSessions.filter((s) => s.status === 'Active').length },
+        { label: 'Voided', value: processedSessions.filter((s) => s.status === 'Voided').length },
       ],
       headers,
       rows,
@@ -249,8 +253,8 @@ export const SessionHistory: React.FC = () => {
       sortable: true,
       width: '15%',
       render: (s) => (
-        <span className="text-xs text-neutral-600 truncate block" title={s.outTime || 'In Session'}>
-          {s.outTime ? formatDateTime(s.outTime) : '— In Session —'}
+        <span className="text-xs text-neutral-600 truncate block" title={s.outTime || (s.status === 'Voided' ? 'Voided' : 'In Session')}>
+          {s.status === 'Voided' ? '— Voided —' : s.outTime ? formatDateTime(s.outTime) : '— In Session —'}
         </span>
       ),
     },
@@ -261,7 +265,9 @@ export const SessionHistory: React.FC = () => {
       width: '11%',
       render: (s) => (
         <span className="text-xs font-medium text-neutral-700">
-          {s.durationMinutes
+          {s.status === 'Voided'
+            ? 'Voided'
+            : s.durationMinutes
             ? `${Math.floor(s.durationMinutes / 60)}h ${s.durationMinutes % 60}m`
             : 'Active'}
         </span>
@@ -275,7 +281,7 @@ export const SessionHistory: React.FC = () => {
       width: '9%',
       render: (s) => (
         <span className="font-bold text-sm text-neutral-900">
-          {s.amount ? `₹${s.amount}` : '—'}
+          {s.status === 'Voided' ? '₹0' : s.amount ? `₹${s.amount}` : '—'}
         </span>
       ),
     },
@@ -307,17 +313,23 @@ export const SessionHistory: React.FC = () => {
             onClick={() => navigate(`/sessions/${s.id}/receipt`)}
             className="p-1.5 rounded text-neutral-500 hover:text-primary hover:bg-neutral-100 transition-colors"
             title="Print Receipt"
+            disabled={s.status === 'Voided'}
           >
             <Printer className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => setSessionToDelete(s)}
-            className="p-1.5 rounded text-neutral-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-            title="Delete Vehicle Session"
-          >
-            <Trash2 className="w-4 h-4 text-neutral-400 hover:text-red-600" />
-          </button>
+          {s.status !== 'Voided' && (
+            <button
+              type="button"
+              onClick={() => {
+                setSessionToVoid(s);
+                setVoidReason('Accidental double-scan at gate');
+              }}
+              className="p-1.5 rounded text-neutral-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+              title="Void Vehicle Session"
+            >
+              <Ban className="w-4 h-4 text-neutral-400 hover:text-red-600" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -330,11 +342,11 @@ export const SessionHistory: React.FC = () => {
         <div>
           <h1 className="text-2xl font-black text-neutral-900 tracking-tight">Session History</h1>
           <p className="text-xs text-neutral-500 mt-0.5">
-            Audit trail of vehicle entries, stays, exit timestamps, and billed receipts
+            Audit trail of vehicle entries, stays, exit timestamps, billed receipts, and voided sessions
           </p>
         </div>
 
-        {/* Export Buttons per §3.5 */}
+        {/* Export Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="secondary"
@@ -355,7 +367,7 @@ export const SessionHistory: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Bar per §3.5 (sticky under top bar) */}
+      {/* Filter Bar */}
       <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
           <div className="lg:col-span-2">
@@ -392,6 +404,7 @@ export const SessionHistory: React.FC = () => {
               { value: 'All', label: 'All Statuses' },
               { value: 'Active', label: 'Active Sessions' },
               { value: 'Completed', label: 'Completed' },
+              { value: 'Voided', label: 'Voided' },
             ]}
           />
 
@@ -403,8 +416,8 @@ export const SessionHistory: React.FC = () => {
             }}
             options={[
               { value: 'All', label: 'All Time' },
-              { value: 'Today', label: 'Today (04-Sep)' },
-              { value: 'Yesterday', label: 'Yesterday (03-Sep)' },
+              { value: 'Today', label: 'Today' },
+              { value: 'Yesterday', label: 'Yesterday' },
             ]}
           />
         </div>
@@ -426,7 +439,7 @@ export const SessionHistory: React.FC = () => {
         )}
       </div>
 
-      {/* Sessions Data Table per §3.5 */}
+      {/* Sessions Data Table */}
       <Table
         columns={columns}
         data={paginatedSessions}
@@ -451,17 +464,53 @@ export const SessionHistory: React.FC = () => {
         }}
       />
 
-      <ConfirmationModal
-        isOpen={sessionToDelete !== null}
-        onClose={() => setSessionToDelete(null)}
-        onConfirm={handleDeleteConfirm}
-        title="Delete Vehicle Record"
-        itemName={sessionToDelete?.vehicleNumber || ''}
-        message={`Are you sure you want to delete the record for vehicle ${sessionToDelete?.vehicleNumber} (Slot ${sessionToDelete?.slotId})? If this session is currently active, the slot will immediately become vacant.`}
-        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Record'}
-        isDestructive={true}
-        isLoading={isDeleting}
-      />
+      {/* Void Modal with Mandatory Reason */}
+      <Modal
+        isOpen={sessionToVoid !== null}
+        onClose={() => setSessionToVoid(null)}
+        title="Void Vehicle Record"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3 rounded-control bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+            Are you sure you want to void the session for vehicle{' '}
+            <strong>{sessionToVoid?.vehicleNumber}</strong> (Slot {sessionToVoid?.slotId})?
+            The slot will be freed immediately and recorded in the security audit log.
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-neutral-700">
+              Mandatory Void Reason <span className="text-red-500">*</span>
+            </label>
+            <Input
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              placeholder="e.g. Accidental double-scan at Gate 1"
+              disabled={isVoiding}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-neutral-100">
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setSessionToVoid(null)}
+              disabled={isVoiding}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="md"
+              onClick={handleVoidConfirm}
+              isLoading={isVoiding}
+              disabled={!voidReason.trim()}
+            >
+              Confirm Void
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

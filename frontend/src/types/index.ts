@@ -2,7 +2,7 @@ export type VehicleCategory = 'Car' | 'Scooter';
 
 export type SlotStatus = 'Vacant' | 'Occupied' | 'Deactivated';
 
-export type SessionStatus = 'Active' | 'Completed';
+export type SessionStatus = 'Active' | 'Completed' | 'Voided';
 
 export type UserRole = 'admin';
 
@@ -41,6 +41,9 @@ export interface ParkingSession {
   amount?: number | null;
   status: SessionStatus;
   rateApplied?: number;
+  voidReason?: string | null;
+  voidedAt?: string | null;
+  voidedBy?: string | null;
 }
 
 export interface DeactivationEvent {

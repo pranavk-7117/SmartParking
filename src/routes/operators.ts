@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
 import { AdminRole, AdminUser, Location, OperatorReassignment } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
+import { validatePassword, hashPassword } from '../lib/password';
+import { logSecurityEvent } from '../lib/audit';
 
 export const operatorsRouter = Router();
+
+// Strictly require Admin access for all operator management endpoints
+operatorsRouter.use(requireAuth, requireAdmin);
 
 type OperatorWithRelations = AdminUser & {
   location: Location | null;
@@ -86,9 +90,9 @@ function formatOperator(op: OperatorWithRelations) {
 
 /**
  * GET /api/v1/operators
- * Returns all operator accounts with their reassignment history
+ * Returns all operator accounts with their reassignment history (Admin Only)
  */
-operatorsRouter.get('/', requireAuth, async (req, res, next) => {
+operatorsRouter.get('/', async (req, res, next) => {
   try {
     const siteQuery = req.query.siteId as string | undefined;
     const locationId = await resolveLocationId(siteQuery);
@@ -116,9 +120,9 @@ operatorsRouter.get('/', requireAuth, async (req, res, next) => {
 
 /**
  * GET /api/v1/operators/:id
- * Single operator profile
+ * Single operator profile (Admin Only)
  */
-operatorsRouter.get('/:id', requireAuth, async (req, res, next) => {
+operatorsRouter.get('/:id', async (req, res, next) => {
   try {
     const id = String(req.params.id);
     const op = await findOperator(id);
@@ -131,16 +135,16 @@ operatorsRouter.get('/:id', requireAuth, async (req, res, next) => {
 
 /**
  * POST /api/v1/operators
- * Creates a new operator
+ * Creates a new operator with password policy enforcement and mandatory password change on first login.
  */
-operatorsRouter.post('/', requireAuth, async (req, res, next) => {
+operatorsRouter.post('/', async (req, res, next) => {
   try {
     const schema = z.object({
       name: z.string().min(2),
       username: z.string().min(3),
       contact: z.string().min(8),
       assignedSiteId: z.string().min(1),
-      password: z.string().min(6).optional().default('Operator@123'),
+      password: z.string().optional().default('Operator@12345'),
       email: z.string().optional(),
       employeeId: z.string().optional(),
       shiftTime: z.string().optional(),
@@ -151,7 +155,13 @@ operatorsRouter.post('/', requireAuth, async (req, res, next) => {
     const locationId = await resolveLocationId(body.assignedSiteId);
     if (!locationId) throw new AppError('Assigned site not found', 404);
 
-    const passwordHash = await bcrypt.hash(body.password, 10);
+    // Enforce password policy
+    const validation = validatePassword(body.password, 'OPERATOR');
+    if (!validation.valid) {
+      throw new AppError(validation.error || 'Password does not meet complexity requirements', 400);
+    }
+
+    const passwordHash = await hashPassword(body.password);
 
     const op = await prisma.adminUser.create({
       data: {
@@ -167,6 +177,8 @@ operatorsRouter.post('/', requireAuth, async (req, res, next) => {
         status: 'Active',
         authMethod: 'Password',
         locationId,
+        mustChangePassword: true, // Mandatory password change on first login
+        tokenVersion: 1,
       },
       include: {
         location: true,
@@ -175,6 +187,22 @@ operatorsRouter.post('/', requireAuth, async (req, res, next) => {
           orderBy: { reassignedAt: 'desc' },
         },
       },
+    });
+
+    await logSecurityEvent({
+      eventType: 'OPERATOR_CREATED',
+      severity: 'INFO',
+      actorId: req.user!.id,
+      actorUsername: req.user!.username,
+      actorRole: req.user!.role,
+      targetType: 'AdminUser',
+      targetId: op.id,
+      ipAddress: req.ip || req.socket.remoteAddress,
+      locationId: op.locationId,
+      resource: '/api/v1/operators',
+      action: 'CREATE_OPERATOR',
+      status: 'SUCCESS',
+      details: { username: op.username, locationId: op.locationId },
     });
 
     res.status(201).json(formatOperator(op as OperatorWithRelations));
@@ -187,7 +215,7 @@ operatorsRouter.post('/', requireAuth, async (req, res, next) => {
  * PUT /api/v1/operators/:id
  * Admin updates operator profile or resets password
  */
-operatorsRouter.put('/:id', requireAuth, async (req, res, next) => {
+operatorsRouter.put('/:id', async (req, res, next) => {
   try {
     const id = String(req.params.id);
     const op = await findOperator(id);
@@ -200,7 +228,7 @@ operatorsRouter.put('/:id', requireAuth, async (req, res, next) => {
       employeeId: z.string().optional(),
       shiftTime: z.string().optional(),
       notes: z.string().optional(),
-      password: z.string().min(6).optional(),
+      password: z.string().optional(),
     });
 
     const body = schema.parse(req.body);
@@ -212,8 +240,15 @@ operatorsRouter.put('/:id', requireAuth, async (req, res, next) => {
     if (body.employeeId !== undefined) updateData.employeeId = body.employeeId.trim();
     if (body.shiftTime !== undefined) updateData.shiftTime = body.shiftTime.trim();
     if (body.notes !== undefined) updateData.notes = body.notes.trim();
+
     if (body.password) {
-      updateData.passwordHash = await bcrypt.hash(body.password, 10);
+      const validation = validatePassword(body.password, 'OPERATOR');
+      if (!validation.valid) {
+        throw new AppError(validation.error || 'Password does not meet complexity requirements', 400);
+      }
+      updateData.passwordHash = await hashPassword(body.password);
+      updateData.tokenVersion = { increment: 1 }; // Revoke existing tokens on password reset
+      updateData.mustChangePassword = true;
     }
 
     const updated = await prisma.adminUser.update({
@@ -228,6 +263,22 @@ operatorsRouter.put('/:id', requireAuth, async (req, res, next) => {
       },
     });
 
+    await logSecurityEvent({
+      eventType: 'OPERATOR_UPDATED',
+      severity: 'INFO',
+      actorId: req.user!.id,
+      actorUsername: req.user!.username,
+      actorRole: req.user!.role,
+      targetType: 'AdminUser',
+      targetId: op.id,
+      ipAddress: req.ip || req.socket.remoteAddress,
+      locationId: op.locationId,
+      resource: `/api/v1/operators/${id}`,
+      action: 'UPDATE_OPERATOR',
+      status: 'SUCCESS',
+      details: { username: op.username, passwordReset: !!body.password },
+    });
+
     res.json(formatOperator(updated as OperatorWithRelations));
   } catch (err) {
     next(err);
@@ -236,9 +287,9 @@ operatorsRouter.put('/:id', requireAuth, async (req, res, next) => {
 
 /**
  * POST /api/v1/operators/:id/reassign
- * Reassigns an operator to another site with audit logging
+ * Reassigns an operator to another site with audit logging and immediate token revocation.
  */
-operatorsRouter.post('/:id/reassign', requireAuth, async (req, res, next) => {
+operatorsRouter.post('/:id/reassign', async (req, res, next) => {
   try {
     const id = String(req.params.id);
     const schema = z.object({
@@ -264,12 +315,16 @@ operatorsRouter.post('/:id/reassign', requireAuth, async (req, res, next) => {
 
     if (!op) throw new AppError('Operator not found', 404);
 
-    const adminName = req.operator?.username ?? 'Admin';
+    const adminName = req.user?.username ?? 'Admin';
 
     await prisma.$transaction(async (tx) => {
+      // Reassign and bump tokenVersion to invalidate stale tokens with old site scope
       await tx.adminUser.update({
         where: { id: op.id },
-        data: { locationId: targetLocation.id },
+        data: {
+          locationId: targetLocation.id,
+          tokenVersion: { increment: 1 },
+        },
       });
 
       await tx.operatorReassignment.create({
@@ -281,6 +336,26 @@ operatorsRouter.post('/:id/reassign', requireAuth, async (req, res, next) => {
           reason: body.reason ?? 'Shift transfer',
         },
       });
+    });
+
+    await logSecurityEvent({
+      eventType: 'OPERATOR_REASSIGNED',
+      severity: 'HIGH',
+      actorId: req.user!.id,
+      actorUsername: req.user!.username,
+      actorRole: req.user!.role,
+      targetType: 'AdminUser',
+      targetId: op.id,
+      ipAddress: req.ip || req.socket.remoteAddress,
+      locationId: targetLocation.id,
+      resource: `/api/v1/operators/${id}/reassign`,
+      action: 'REASSIGN_OPERATOR',
+      status: 'SUCCESS',
+      details: {
+        fromLocationId: op.locationId,
+        toLocationId: targetLocation.id,
+        reason: body.reason,
+      },
     });
 
     res.json({
@@ -296,9 +371,9 @@ operatorsRouter.post('/:id/reassign', requireAuth, async (req, res, next) => {
 
 /**
  * PATCH /api/v1/operators/:id/terminate
- * Terminates an operator
+ * Terminates an operator and immediately revokes all tokens.
  */
-operatorsRouter.patch('/:id/terminate', requireAuth, async (req, res, next) => {
+operatorsRouter.patch('/:id/terminate', async (req, res, next) => {
   try {
     const id = String(req.params.id);
 
@@ -313,7 +388,26 @@ operatorsRouter.patch('/:id/terminate', requireAuth, async (req, res, next) => {
 
     const updated = await prisma.adminUser.update({
       where: { id: op.id },
-      data: { status: 'Terminated' },
+      data: {
+        status: 'Terminated',
+        tokenVersion: { increment: 1 }, // Immediate token revocation
+      },
+    });
+
+    await logSecurityEvent({
+      eventType: 'OPERATOR_TERMINATED',
+      severity: 'HIGH',
+      actorId: req.user!.id,
+      actorUsername: req.user!.username,
+      actorRole: req.user!.role,
+      targetType: 'AdminUser',
+      targetId: op.id,
+      ipAddress: req.ip || req.socket.remoteAddress,
+      locationId: op.locationId,
+      resource: `/api/v1/operators/${id}/terminate`,
+      action: 'TERMINATE_OPERATOR',
+      status: 'SUCCESS',
+      details: { username: op.username },
     });
 
     res.json({ success: true, id: updated.id, status: updated.status });

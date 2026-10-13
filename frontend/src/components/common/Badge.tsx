@@ -65,6 +65,13 @@ export const Badge: React.FC<BadgeProps> = ({
           icon: <AlertCircle className="w-3 h-3" />,
           label: 'Deactivated',
         };
+      case 'Voided':
+      case 'VOIDED':
+        return {
+          bg: 'bg-rose-50 border-rose-200 text-rose-700',
+          icon: <XCircle className="w-3 h-3" />,
+          label: 'Voided',
+        };
       case 'Admin':
       case 'admin':
         return {

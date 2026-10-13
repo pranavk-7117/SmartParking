@@ -149,14 +149,23 @@ flowchart LR
 
 All routes are prefixed with `/api/v1`. Protected routes require `Authorization: Bearer <token>`.
 
-#### Authentication
+#### Authentication & Security
+
+All calls to `POST /api/v1/auth/login` require the header:
+* `X-Client-Type: admin-web` for Administrative web logins
+* `X-Client-Type: operator-android` for Mobile handheld attendants
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auth/login` | — | Login and receive JWT |
-| `GET` | `/auth/me` | ✅ | Get current user profile |
-| `PUT` | `/auth/me` | ✅ | Update profile (name, email) |
-| `PUT` | `/auth/change-password` | ✅ | Change password (accepts camelCase & snake_case) |
+| `POST` | `/auth/login` | — | Login with lockout protection (5 fails/15m) and role segregation |
+| `POST` | `/auth/logout` | ✅ | Revoke session tokens immediately (bumps `tokenVersion`) |
+| `POST` | `/auth/mfa/setup` | ✅ Admin | Generate TOTP secret and backup recovery codes |
+| `POST` | `/auth/mfa/verify` | ✅ Admin | Verify initial TOTP 6-digit code and activate MFA |
+| `POST` | `/auth/mfa/login` | — | Complete MFA challenge with TOTP code or recovery code |
+| `POST` | `/auth/mfa/disable`| ✅ Admin | Disable TOTP MFA with password confirmation |
+| `GET` | `/auth/me` | ✅ | Get fresh database user profile and site assignment |
+| `PUT` | `/auth/profile` | ✅ | Update profile (role/site mass-assignment protected) |
+| `POST` | `/auth/change-password` | ✅ | Change password (enforces password complexity) |
 
 #### Locations & Availability
 
@@ -202,7 +211,21 @@ erDiagram
         varchar password_hash
         admin_role role
         varchar display_name
+        int token_version
+        boolean must_change_password
+        boolean mfa_enabled
         timestamptz created_at
+    }
+
+    security_audit_logs {
+        uuid id PK
+        varchar event_type
+        varchar severity
+        uuid actor_id FK
+        varchar resource
+        varchar action
+        varchar status
+        timestamptz timestamp
     }
 
     locations {
@@ -243,6 +266,9 @@ erDiagram
         timestamptz in_time
         timestamptz out_time
         session_status status
+        varchar void_reason
+        uuid voided_by FK
+        timestamptz voided_at
     }
 
     bills {
@@ -259,6 +285,7 @@ erDiagram
     parking_sessions ||--o| bills : "billed by"
     locations ||--o{ slots : "contains"
     admin_users ||--o{ parking_sessions : "operated by"
+    admin_users ||--o{ security_audit_logs : "audits"
 ```
 
 #### Custom PostgreSQL Constraints
@@ -311,6 +338,8 @@ npm run dev        # Starts on http://localhost:3000
 | `npm run db:reset` | Drop DB, re-migrate, re-seed |
 | `npm run test:smoke` | Run DB constraint verification suite |
 | `npm run test:api` | Run API integration tests |
+| `npx ts-node test/auth-identity-audit.test.ts` | Run authentication, lockout, token revocation & MFA tests |
+| `npx ts-node test/authorization-matrix.test.ts` | Run 4-actor authorization matrix & route allowlist audit |
 
 ---
 
