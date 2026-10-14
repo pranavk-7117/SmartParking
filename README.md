@@ -1,4 +1,4 @@
-# Smart Parking Management System
+# ParkIT — Parking Management System
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
@@ -7,19 +7,19 @@
 [![React](https://img.shields.io/badge/React-18+-61DAFB.svg)](https://react.dev/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)](https://developer.android.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
-A full-stack smart parking facility management platform consisting of three integrated components:
+A modern parking facility management platform built for municipal and commercial parking lots:
 
 | Component | Description |
 |---|---|
-| **Backend API** | Express + TypeScript REST API with JWT authentication and PostgreSQL via Prisma |
-| **Admin Dashboard** | React + Vite web application for facility administrators |
-| **Operator App** | Native Android (Jetpack Compose) application for gate operators — offline-first |
+| **Backend API** | Express + TypeScript REST API with security hardening, audit logs, and PostgreSQL via Prisma |
+| **Admin Dashboard** | React + Vite web application for facility administrators (Slot live view, site editing, operator management, session history, reports) |
+| **Operator App** | Native Android (Jetpack Compose) handheld app for gate staff — offline-first with room local cache |
 
 ---
 
-## Table of Contents
-
+- [Quick Start (Docker)](#quick-start-docker)
 - [System Architecture](#system-architecture)
 - [Repository Structure](#repository-structure)
 - [Backend API](#backend-api)
@@ -37,6 +37,36 @@ A full-stack smart parking facility management platform consisting of three inte
   - [Getting Started (Android)](#getting-started-android)
 - [Available Scripts](#available-scripts)
 - [License](#license)
+
+---
+
+## Quick Start (Docker)
+
+The fastest and most reliable way to run the entire ParkIT system (PostgreSQL 16, Node.js API, React Web Dashboard):
+
+### 1. Start All Containers
+```bash
+# Windows
+start.bat
+
+# Or directly with Docker Compose
+docker compose up -d
+```
+
+### 2. Access the Application
+* **Admin Dashboard:** [http://localhost:5173](http://localhost:5173)
+* **Backend API Health:** [http://localhost:5173/api/v1/health](http://localhost:5173/api/v1/health) (or port 3000)
+* **Operator Android APK:** [http://localhost:5173/download/operator-app.apk](http://localhost:5173/download/operator-app.apk)
+
+### 3. Default Credentials
+| Role | Username | Default Password | Environment Variable |
+|---|---|---|---|
+| **Admin** | `admin` | `change_me_admin_password` | `ADMIN_PASSWORD` |
+| **Operator** | `operator` | `change_me_operator_password` | `OPERATOR_PASSWORD` |
+
+> [!NOTE]
+> All credentials and configurations can be customized via `.env` without touching any source code.
+> The database automatically migrates and seeds 1 facility (`ParkIT – Camp`), 45 parking slots (30 Car, 15 Scooter), 1 Admin, and 1 Operator on initial startup.
 
 ---
 

@@ -53,7 +53,7 @@ export const exportToPDF = (options: PDFExportOptions): void => {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('AeroPark Smart Parking Management', 40, 32);
+  doc.text('ParkIT Parking Management System', 40, 32);
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');

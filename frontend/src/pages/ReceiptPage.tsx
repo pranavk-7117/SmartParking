@@ -57,8 +57,8 @@ export const ReceiptPage: React.FC = () => {
 
   // Find site record
   const sessionSite = sites.find((s) => s.id === session.siteId) || currentSite;
-  const siteAddress = sessionSite?.address || 'Smart Parking Automated Facility';
-  const siteName = sessionSite?.name || 'Smart Parking Hub';
+  const siteAddress = sessionSite?.address || 'ParkIT Facility';
+  const siteName = sessionSite?.name || 'ParkIT';
 
   // Duration display
   const durationMins = session.durationMinutes ?? 0;

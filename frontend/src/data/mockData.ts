@@ -3,7 +3,7 @@ import { Site, ParkingSlot, ParkingSession, DeactivationEvent, RateItem, RateHis
 export const initialSites: Site[] = [
   {
     "id": "site-hadapsar",
-    "name": "AeroPark – Hadapsar",
+    "name": "ParkIT – Hadapsar",
     "address": "Plot 42, Magarpatta Road, Hadapsar Industrial Estate, Pune, Maharashtra 411028",
     "gateInfo": "Terminal 2 • Gates 1 & 2 (North Entry)",
     "totalCarSlots": 40,
@@ -14,9 +14,9 @@ export const initialSites: Site[] = [
   },
   {
     "id": "site-camp",
-    "name": "AeroPark – Camp",
+    "name": "ParkIT – Camp",
     "address": "14/B East Street, Near Wonderland, Camp, Pune, Maharashtra 411001",
-    "gateInfo": "Main Plaza Gate • ANPR Lane 1 & 2",
+    "gateInfo": "Main Entrance Gate",
     "totalCarSlots": 30,
     "totalScooterSlots": 15,
     "defaultCarRate": 40,
@@ -25,7 +25,7 @@ export const initialSites: Site[] = [
   },
   {
     "id": "site-kothrud",
-    "name": "AeroPark – Kothrud",
+    "name": "ParkIT – Kothrud",
     "address": "Paud Road, Ideal Colony, Kothrud, Pune, Maharashtra 411038",
     "gateInfo": "Phase 1 Construction Gates",
     "totalCarSlots": 50,
@@ -147,9 +147,9 @@ export const initialOperators: OperatorAccount[] = [
         "id": "rh-1",
         "operatorId": "op-1",
         "fromSiteId": "site-camp",
-        "fromSiteName": "AeroPark – Camp",
+        "fromSiteName": "ParkIT – Camp",
         "toSiteId": "site-hadapsar",
-        "toSiteName": "AeroPark – Hadapsar",
+        "toSiteName": "ParkIT – Hadapsar",
         "reassignedBy": "Rajesh Sharma",
         "reassignedAt": "01-Aug-2026, 10:00 AM",
         "reason": "Shift rotation to cover North gate expansion"
@@ -183,9 +183,9 @@ export const initialOperators: OperatorAccount[] = [
         "id": "rh-2",
         "operatorId": "op-3",
         "fromSiteId": "site-hadapsar",
-        "fromSiteName": "AeroPark – Hadapsar",
+        "fromSiteName": "ParkIT – Hadapsar",
         "toSiteId": "site-camp",
-        "toSiteName": "AeroPark – Camp",
+        "toSiteName": "ParkIT – Camp",
         "reassignedBy": "Rajesh Sharma",
         "reassignedAt": "15-Jul-2026, 09:30 AM",
         "reason": "Requested transfer closer to residence"

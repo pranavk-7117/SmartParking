@@ -110,7 +110,7 @@ sitesRouter.get('/:id', requireAuth, async (req, res, next) => {
       code: loc.code,
       city: loc.city,
       address: loc.address ?? `${loc.name}, ${loc.city}`,
-      gateInfo: loc.gateInfo ?? 'Main Gate ANPR Lane',
+      gateInfo: loc.gateInfo ?? 'Main Entrance Gate',
       totalCarSlots: loc.totalCarSlots ?? carSlots.length,
       totalScooterSlots: loc.totalScooterSlots ?? scooterSlots.length,
       defaultCarRate: carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30,

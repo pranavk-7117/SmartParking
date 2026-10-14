@@ -1,508 +1,118 @@
-import { PrismaClient, VehicleType, SlotStatus, SessionStatus, AdminRole } from '@prisma/client';
+import { PrismaClient, VehicleType, SlotStatus, AdminRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  console.log(`🌱 Starting database seeding (Environment: ${process.env.NODE_ENV || 'development'})...`);
+  console.log('🌱 Starting ParkIT database seeding...');
 
-  // ── 1. SITES / LOCATIONS ──────────────────────────────────────────────────
-  const sitesData = [
-    {
-      code: 'site-hadapsar',
-      name: 'AeroPark – Hadapsar',
-      city: 'Pune',
-      address: 'Plot 42, Magarpatta Road, Hadapsar Industrial Estate, Pune, Maharashtra 411028',
-      gateInfo: 'Terminal 2 • Gates 1 & 2 (North Entry)',
-      totalCarSlots: 40,
-      totalScooterSlots: 20,
-      defaultCarRate: 30.0,
-      defaultScooterRate: 15.0,
-      status: 'Active',
-    },
-    {
-      code: 'site-camp',
-      name: 'AeroPark – Camp',
-      city: 'Pune',
-      address: '14/B East Street, Near Wonderland, Camp, Pune, Maharashtra 411001',
-      gateInfo: 'Main Plaza Gate • ANPR Lane 1 & 2',
-      totalCarSlots: 30,
-      totalScooterSlots: 15,
-      defaultCarRate: 40.0,
-      defaultScooterRate: 20.0,
-      status: 'Active',
-    },
-    {
-      code: 'site-kothrud',
-      name: 'AeroPark – Kothrud',
-      city: 'Pune',
-      address: 'Paud Road, Ideal Colony, Kothrud, Pune, Maharashtra 411038',
-      gateInfo: 'Phase 1 Construction Gates',
-      totalCarSlots: 50,
-      totalScooterSlots: 25,
-      defaultCarRate: 30.0,
-      defaultScooterRate: 15.0,
-      status: 'Coming Soon',
-    },
-  ];
+  // ── 1. SITE ──────────────────────────────────────────────────────────────────
+  const siteData = {
+    code: 'site-camp',
+    name: 'ParkIT – Camp',
+    city: process.env.SITE_CITY || 'Pune',
+    address: process.env.SITE_ADDRESS || 'Camp Area, Pune, Maharashtra',
+    gateInfo: process.env.SITE_GATE_INFO || 'Main Entrance Gate',
+    totalCarSlots: parseInt(process.env.SITE_CAR_SLOTS || '30', 10),
+    totalScooterSlots: parseInt(process.env.SITE_SCOOTER_SLOTS || '15', 10),
+    defaultCarRate: parseFloat(process.env.SITE_CAR_RATE || '40'),
+    defaultScooterRate: parseFloat(process.env.SITE_SCOOTER_RATE || '20'),
+    status: 'Active',
+  };
 
-  const siteMap = new Map<string, string>(); // code -> id
-
-  for (const s of sitesData) {
-    const loc = await prisma.location.upsert({
-      where: { code: s.code },
-      update: s,
-      create: s,
-    });
-    siteMap.set(s.code, loc.id);
-  }
-  console.log(`✅ Seeded ${siteMap.size} physical parking sites.`);
-
-  const hadapsarId = siteMap.get('site-hadapsar')!;
-  const campId = siteMap.get('site-camp')!;
-  const kothrudId = siteMap.get('site-kothrud')!;
-
-  // ── 2. SITE-SPECIFIC TARIFFS (RateMaster) ─────────────────────────────────
-  const ratesToSeed = [
-    { locationId: hadapsarId, vehicleType: VehicleType.CAR, ratePerHour: 30.0, effectiveFrom: new Date('2026-01-01'), lastUpdatedBy: 'Rajesh Sharma (Admin)' },
-    { locationId: hadapsarId, vehicleType: VehicleType.SCOOTER, ratePerHour: 15.0, effectiveFrom: new Date('2026-01-01'), lastUpdatedBy: 'Rajesh Sharma (Admin)' },
-    { locationId: campId, vehicleType: VehicleType.CAR, ratePerHour: 40.0, effectiveFrom: new Date('2026-01-01'), lastUpdatedBy: 'Rajesh Sharma (Admin)' },
-    { locationId: campId, vehicleType: VehicleType.SCOOTER, ratePerHour: 20.0, effectiveFrom: new Date('2026-01-01'), lastUpdatedBy: 'Rajesh Sharma (Admin)' },
-    { locationId: kothrudId, vehicleType: VehicleType.CAR, ratePerHour: 30.0, effectiveFrom: new Date('2026-01-01'), lastUpdatedBy: 'Rajesh Sharma (Admin)' },
-    { locationId: kothrudId, vehicleType: VehicleType.SCOOTER, ratePerHour: 15.0, effectiveFrom: new Date('2026-01-01'), lastUpdatedBy: 'Rajesh Sharma (Admin)' },
-  ];
-
-  for (const r of ratesToSeed) {
-    await prisma.rateMaster.upsert({
-      where: {
-        locationId_vehicleType: {
-          locationId: r.locationId,
-          vehicleType: r.vehicleType,
-        },
-      },
-      update: r,
-      create: r,
-    });
-  }
-  console.log('✅ Seeded site-specific tariff masters.');
-
-  // Rate History Audit Trail
-  await prisma.rateHistory.deleteMany();
-  await prisma.rateHistory.createMany({
-    data: [
-      {
-        locationId: hadapsarId,
-        vehicleType: VehicleType.CAR,
-        oldRate: 25.0,
-        newRate: 30.0,
-        changedBy: 'Rajesh Sharma',
-        createdAt: new Date('2026-09-01T10:30:00Z'),
-      },
-      {
-        locationId: hadapsarId,
-        vehicleType: VehicleType.SCOOTER,
-        oldRate: 10.0,
-        newRate: 15.0,
-        changedBy: 'Rajesh Sharma',
-        createdAt: new Date('2026-08-25T16:15:00Z'),
-      },
-      {
-        locationId: campId,
-        vehicleType: VehicleType.CAR,
-        oldRate: 35.0,
-        newRate: 40.0,
-        changedBy: 'Rajesh Sharma',
-        createdAt: new Date('2026-09-02T11:00:00Z'),
-      },
-    ],
+  const site = await prisma.location.upsert({
+    where: { code: siteData.code },
+    update: siteData,
+    create: siteData,
   });
-  console.log('✅ Seeded rate history audit trail.');
+  console.log(`✅ Seeded site: ${site.name}`);
 
-  // ── 3. PARKING SLOTS ──────────────────────────────────────────────────────
-  const slotRecords: Array<{
-    locationId: string;
-    locationCode: string;
-    slotType: VehicleType;
-    status: SlotStatus;
-    deactivationReason?: string;
-    deactivatedBy?: string;
-    deactivatedAt?: Date;
-  }> = [];
+  // ── 2. RATES ─────────────────────────────────────────────────────────────────
+  await prisma.rateMaster.upsert({
+    where: { locationId_vehicleType: { locationId: site.id, vehicleType: VehicleType.CAR } },
+    update: { ratePerHour: siteData.defaultCarRate, effectiveFrom: new Date(), lastUpdatedBy: 'system' },
+    create: { locationId: site.id, vehicleType: VehicleType.CAR, ratePerHour: siteData.defaultCarRate, effectiveFrom: new Date(), lastUpdatedBy: 'system' },
+  });
+  await prisma.rateMaster.upsert({
+    where: { locationId_vehicleType: { locationId: site.id, vehicleType: VehicleType.SCOOTER } },
+    update: { ratePerHour: siteData.defaultScooterRate, effectiveFrom: new Date(), lastUpdatedBy: 'system' },
+    create: { locationId: site.id, vehicleType: VehicleType.SCOOTER, ratePerHour: siteData.defaultScooterRate, effectiveFrom: new Date(), lastUpdatedBy: 'system' },
+  });
+  console.log('✅ Seeded tariff rates.');
 
-  for (let i = 1; i <= 40; i++) {
+  // ── 3. PARKING SLOTS ─────────────────────────────────────────────────────────
+  const carCount = siteData.totalCarSlots;
+  const scooterCount = siteData.totalScooterSlots;
+
+  for (let i = 1; i <= carCount; i++) {
     const code = `C-${i.toString().padStart(2, '0')}`;
-    const isDeact = code === 'C-08';
-    slotRecords.push({
-      locationId: hadapsarId,
-      locationCode: code,
-      slotType: VehicleType.CAR,
-      status: isDeact ? SlotStatus.OUT_OF_SERVICE : SlotStatus.VACANT,
-      deactivationReason: isDeact ? 'Surface oil leak maintenance and bay repaint' : undefined,
-      deactivatedBy: isDeact ? 'Rajesh Sharma' : undefined,
-      deactivatedAt: isDeact ? new Date('2026-09-03T14:30:00Z') : undefined,
+    await prisma.slot.upsert({
+      where: { locationId_locationCode: { locationId: site.id, locationCode: code } },
+      update: { slotType: VehicleType.CAR, status: SlotStatus.VACANT },
+      create: { locationId: site.id, locationCode: code, slotType: VehicleType.CAR, status: SlotStatus.VACANT },
     });
   }
-
-  for (let i = 1; i <= 20; i++) {
+  for (let i = 1; i <= scooterCount; i++) {
     const code = `S-${i.toString().padStart(2, '0')}`;
-    slotRecords.push({
-      locationId: hadapsarId,
-      locationCode: code,
-      slotType: VehicleType.SCOOTER,
-      status: SlotStatus.VACANT,
+    await prisma.slot.upsert({
+      where: { locationId_locationCode: { locationId: site.id, locationCode: code } },
+      update: { slotType: VehicleType.SCOOTER, status: SlotStatus.VACANT },
+      create: { locationId: site.id, locationCode: code, slotType: VehicleType.SCOOTER, status: SlotStatus.VACANT },
     });
   }
+  console.log(`✅ Seeded ${carCount} car slots and ${scooterCount} scooter slots.`);
 
-  for (let i = 1; i <= 30; i++) {
-    const code = `C-${i.toString().padStart(2, '0')}`;
-    slotRecords.push({
-      locationId: campId,
-      locationCode: code,
-      slotType: VehicleType.CAR,
-      status: SlotStatus.VACANT,
-    });
+  // ── 4. ADMIN ACCOUNT ─────────────────────────────────────────────────────────
+  const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@ParkIT!2026';
+  if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) {
+    console.warn('⚠️  ADMIN_USERNAME / ADMIN_PASSWORD env vars not set. Using insecure defaults — set them before production use!');
   }
-
-  for (let i = 1; i <= 15; i++) {
-    const code = `S-${i.toString().padStart(2, '0')}`;
-    slotRecords.push({
-      locationId: campId,
-      locationCode: code,
-      slotType: VehicleType.SCOOTER,
-      status: SlotStatus.VACANT,
-    });
-  }
-
-  const createdSlotMap = new Map<string, string>();
-
-  for (const s of slotRecords) {
-    const created = await prisma.slot.upsert({
-      where: {
-        locationId_locationCode: {
-          locationId: s.locationId,
-          locationCode: s.locationCode,
-        },
-      },
-      update: s,
-      create: s,
-    });
-    createdSlotMap.set(`${s.locationId}:${s.locationCode}`, created.id);
-  }
-  console.log(`✅ Seeded ${slotRecords.length} physical parking bays across sites.`);
-
-  // ── 4. BOOTSTRAP PRIMARY ADMIN ACCOUNT ────────────────────────────────────
-  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD || 'StrongBootstrapAdminPassword!123';
-  const adminHash = await bcrypt.hash(bootstrapPassword, 12);
-
+  const adminHash = await bcrypt.hash(adminPassword, 12);
   await prisma.adminUser.upsert({
-    where: { username: 'rajesh.admin' },
-    update: {
-      name: 'Rajesh Sharma',
-      passwordHash: adminHash,
-      role: AdminRole.ADMIN,
-      status: 'Active',
-      authMethod: 'Password',
-      locationId: hadapsarId,
-      mustChangePassword: false,
-      tokenVersion: 1,
-    },
+    where: { username: adminUsername },
+    update: { passwordHash: adminHash, role: AdminRole.ADMIN, status: 'Active', locationId: site.id, tokenVersion: 1, mustChangePassword: false },
     create: {
-      username: 'rajesh.admin',
-      name: 'Rajesh Sharma',
+      username: adminUsername,
+      name: 'ParkIT Admin',
       passwordHash: adminHash,
       role: AdminRole.ADMIN,
       status: 'Active',
       authMethod: 'Password',
-      locationId: hadapsarId,
-      mustChangePassword: false,
+      locationId: site.id,
       tokenVersion: 1,
+      mustChangePassword: false,
     },
   });
-  console.log('✅ Bootstrapped primary admin account (rajesh.admin).');
+  console.log(`✅ Admin account ready: ${adminUsername}`);
 
-  // Gated demo operators and historical simulation
-  if (!isProduction) {
-    console.log('📦 Seeding non-production test operators, vehicles, and sessions...');
-
-    // System Test Operator (for automated test runner)
-    await prisma.adminUser.upsert({
-      where: { username: 'admin' },
-      update: {
-        name: 'System Test Operator',
-        passwordHash: await bcrypt.hash('Admin@12345', 10),
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        locationId: hadapsarId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-      create: {
-        username: 'admin',
-        name: 'System Test Operator',
-        passwordHash: await bcrypt.hash('Admin@12345', 10),
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        locationId: hadapsarId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-    });
-
-    const operatorHash = await bcrypt.hash('Operator@12345', 10);
-
-    const op1 = await prisma.adminUser.upsert({
-      where: { username: 'suresh.patil' },
-      update: {
-        name: 'Suresh Patil',
-        contact: '+91 98230 11234',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        authMethod: 'Password',
-        sessionsProcessedCount: 1420,
-        locationId: hadapsarId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-      create: {
-        username: 'suresh.patil',
-        name: 'Suresh Patil',
-        contact: '+91 98230 11234',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        authMethod: 'Password',
-        sessionsProcessedCount: 1420,
-        locationId: hadapsarId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-    });
-
-    await prisma.adminUser.upsert({
-      where: { username: 'amit.deshmukh' },
-      update: {
-        name: 'Amit Deshmukh',
-        contact: '+91 98450 88721',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        authMethod: 'Password',
-        sessionsProcessedCount: 980,
-        locationId: hadapsarId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-      create: {
-        username: 'amit.deshmukh',
-        name: 'Amit Deshmukh',
-        contact: '+91 98450 88721',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        authMethod: 'Password',
-        sessionsProcessedCount: 980,
-        locationId: hadapsarId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-    });
-
-    const op3 = await prisma.adminUser.upsert({
-      where: { username: 'pooja.kulkarni' },
-      update: {
-        name: 'Pooja Kulkarni',
-        contact: '+91 97632 44109',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        authMethod: 'Password',
-        sessionsProcessedCount: 1150,
-        locationId: campId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-      create: {
-        username: 'pooja.kulkarni',
-        name: 'Pooja Kulkarni',
-        contact: '+91 97632 44109',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Active',
-        authMethod: 'Password',
-        sessionsProcessedCount: 1150,
-        locationId: campId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-    });
-
-    await prisma.adminUser.upsert({
-      where: { username: 'vikas.shinde' },
-      update: {
-        name: 'Vikas Shinde',
-        contact: '+91 99220 55432',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Terminated',
-        authMethod: 'Password',
-        sessionsProcessedCount: 420,
-        locationId: campId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-      create: {
-        username: 'vikas.shinde',
-        name: 'Vikas Shinde',
-        contact: '+91 99220 55432',
-        passwordHash: operatorHash,
-        role: AdminRole.OPERATOR,
-        status: 'Terminated',
-        authMethod: 'Password',
-        sessionsProcessedCount: 420,
-        locationId: campId,
-        mustChangePassword: false,
-        tokenVersion: 1,
-      },
-    });
-
-    // Operator Reassignments
-    await prisma.operatorReassignment.deleteMany();
-    await prisma.operatorReassignment.createMany({
-      data: [
-        {
-          operatorId: op1.id,
-          fromLocationId: campId,
-          toLocationId: hadapsarId,
-          reassignedBy: 'Rajesh Sharma',
-          reason: 'Shift rotation to cover North gate expansion',
-          reassignedAt: new Date('2026-08-01T10:00:00Z'),
-        },
-        {
-          operatorId: op3.id,
-          fromLocationId: hadapsarId,
-          toLocationId: campId,
-          reassignedBy: 'Rajesh Sharma',
-          reason: 'Requested transfer closer to residence',
-          reassignedAt: new Date('2026-07-15T09:30:00Z'),
-        },
-      ],
-    });
-
-    // Sample vehicles & sessions
-    const sampleVehicles = [
-      { number: 'MH12AB1002', type: VehicleType.CAR },
-      { number: 'MH12DE3456', type: VehicleType.CAR },
-      { number: 'MH12GH7890', type: VehicleType.SCOOTER },
-      { number: 'MH14JK1234', type: VehicleType.CAR },
-      { number: 'MH12LM5678', type: VehicleType.SCOOTER },
-    ];
-
-    const vehicleMap = new Map<string, string>();
-    for (const v of sampleVehicles) {
-      const rec = await prisma.vehicle.upsert({
-        where: { vehicleNumber: v.number },
-        update: { vehicleType: v.type },
-        create: { vehicleNumber: v.number, vehicleType: v.type },
-      });
-      vehicleMap.set(v.number, rec.id);
-    }
-
-    const activeSlot1Id = createdSlotMap.get(`${hadapsarId}:C-02`)!;
-    const activeSlot2Id = createdSlotMap.get(`${hadapsarId}:C-05`)!;
-    const activeSlot3Id = createdSlotMap.get(`${hadapsarId}:S-02`)!;
-
-    await prisma.slot.update({ where: { id: activeSlot1Id }, data: { status: SlotStatus.OCCUPIED } });
-    await prisma.slot.update({ where: { id: activeSlot2Id }, data: { status: SlotStatus.OCCUPIED } });
-    await prisma.slot.update({ where: { id: activeSlot3Id }, data: { status: SlotStatus.OCCUPIED } });
-
-    await prisma.bill.deleteMany();
-    await prisma.parkingSession.deleteMany();
-
-    const now = new Date();
-    await prisma.parkingSession.create({
-      data: {
-        vehicleId: vehicleMap.get('MH12AB1002')!,
-        slotId: activeSlot1Id,
-        inTime: new Date(now.getTime() - 95 * 60 * 1000),
-        status: SessionStatus.ACTIVE,
-      },
-    });
-
-    await prisma.parkingSession.create({
-      data: {
-        vehicleId: vehicleMap.get('MH12DE3456')!,
-        slotId: activeSlot2Id,
-        inTime: new Date(now.getTime() - 40 * 60 * 1000),
-        status: SessionStatus.ACTIVE,
-      },
-    });
-
-    await prisma.parkingSession.create({
-      data: {
-        vehicleId: vehicleMap.get('MH12GH7890')!,
-        slotId: activeSlot3Id,
-        inTime: new Date(now.getTime() - 25 * 60 * 1000),
-        status: SessionStatus.ACTIVE,
-      },
-    });
-
-    const completedSlot1Id = createdSlotMap.get(`${hadapsarId}:C-03`)!;
-    const compIn1 = new Date(now.getTime() - 240 * 60 * 1000);
-    const compOut1 = new Date(now.getTime() - 90 * 60 * 1000);
-    const compSession1 = await prisma.parkingSession.create({
-      data: {
-        vehicleId: vehicleMap.get('MH14JK1234')!,
-        slotId: completedSlot1Id,
-        inTime: compIn1,
-        outTime: compOut1,
-        status: SessionStatus.COMPLETED,
-      },
-    });
-    await prisma.bill.create({
-      data: {
-        sessionId: compSession1.id,
-        durationMinutes: 150,
-        rateApplied: 30.0,
-        amount: 75.0,
-        generatedOn: compOut1,
-      },
-    });
-
-    const completedSlot2Id = createdSlotMap.get(`${hadapsarId}:S-04`)!;
-    const compIn2 = new Date(now.getTime() - 180 * 60 * 1000);
-    const compOut2 = new Date(now.getTime() - 60 * 60 * 1000);
-    const compSession2 = await prisma.parkingSession.create({
-      data: {
-        vehicleId: vehicleMap.get('MH12LM5678')!,
-        slotId: completedSlot2Id,
-        inTime: compIn2,
-        outTime: compOut2,
-        status: SessionStatus.COMPLETED,
-      },
-    });
-    await prisma.bill.create({
-      data: {
-        sessionId: compSession2.id,
-        durationMinutes: 120,
-        rateApplied: 15.0,
-        amount: 30.0,
-        generatedOn: compOut2,
-      },
-    });
-
-    console.log('✅ Seeded demo sessions and bills.');
+  // ── 5. OPERATOR ACCOUNT ──────────────────────────────────────────────────────
+  const operatorUsername = process.env.OPERATOR_USERNAME || 'operator';
+  const operatorPassword = process.env.OPERATOR_PASSWORD || 'Operator@ParkIT!2026';
+  if (!process.env.OPERATOR_USERNAME || !process.env.OPERATOR_PASSWORD) {
+    console.warn('⚠️  OPERATOR_USERNAME / OPERATOR_PASSWORD env vars not set. Using insecure defaults — set them before production use!');
   }
+  const operatorHash = await bcrypt.hash(operatorPassword, 12);
+  await prisma.adminUser.upsert({
+    where: { username: operatorUsername },
+    update: { passwordHash: operatorHash, role: AdminRole.OPERATOR, status: 'Active', locationId: site.id, tokenVersion: 1, mustChangePassword: false },
+    create: {
+      username: operatorUsername,
+      name: 'ParkIT Operator',
+      passwordHash: operatorHash,
+      role: AdminRole.OPERATOR,
+      status: 'Active',
+      authMethod: 'Password',
+      locationId: site.id,
+      tokenVersion: 1,
+      mustChangePassword: false,
+    },
+  });
+  console.log(`✅ Operator account ready: ${operatorUsername}`);
 
-  console.log('\n🎉 Database bootstrap completed successfully!');
+  console.log('🎉 ParkIT seeding complete.');
 }
 
 main()
-  .catch((e) => {
-    console.error('❌ Error during database seeding:', e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(async () => { await prisma.$disconnect(); });

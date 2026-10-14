@@ -127,9 +127,9 @@ sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
     res.json({
       id: s.id,
       siteId: s.slot.location?.code ?? '',
-      siteName: s.slot.location?.name ?? 'AeroPark Facility',
+      siteName: s.slot.location?.name ?? 'ParkIT Facility',
       siteAddress: s.slot.location?.address ?? 'Pune, Maharashtra',
-      gateInfo: s.slot.location?.gateInfo ?? 'Terminal 2 • Gates 1 & 2',
+      gateInfo: s.slot.location?.gateInfo ?? 'Main Entrance Gate',
       vehicleNumber: s.vehicle.vehicleNumber,
       category,
       slotId: s.slot.locationCode,
@@ -184,6 +184,43 @@ sessionsRouter.delete('/:id', requireAuth, async (req, res, next) => {
     });
 
     res.json({ success: true, message: 'Session deleted and slot updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/sessions/:id/void
+ * Voids an active session, frees the slot, and cleans up attached bill.
+ */
+sessionsRouter.post('/:id/void', requireAuth, async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const session = await prisma.parkingSession.findUnique({
+      where: { id },
+      include: { slot: true },
+    });
+
+    if (!session) {
+      throw new AppError('Session not found', 404);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (session.status === SessionStatus.ACTIVE && session.slotId) {
+        await tx.slot.update({
+          where: { id: session.slotId },
+          data: { status: SlotStatus.VACANT },
+        });
+      }
+      await tx.bill.deleteMany({
+        where: { sessionId: id },
+      });
+      await tx.parkingSession.delete({
+        where: { id },
+      });
+    });
+
+    res.json({ success: true, message: 'Session voided and slot freed successfully' });
   } catch (err) {
     next(err);
   }

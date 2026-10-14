@@ -323,7 +323,7 @@ fun HomeScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = assignedLoc?.name ?: "AeroPark – Camp",
+                                text = assignedLoc?.name ?: "ParkIT – Camp",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.5.sp,
                                 color = TextDark,

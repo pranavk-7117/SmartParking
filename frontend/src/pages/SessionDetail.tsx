@@ -56,7 +56,7 @@ export const SessionDetail: React.FC = () => {
   const isCompleted = session.status === 'Completed';
   const isVoided = session.status === 'Voided';
   const sessionSite = sites.find((s) => s.id === session.siteId) || currentSite;
-  const gateInfo = sessionSite?.gateInfo || 'Terminal 2 · Gates 1 & 2 (ANPR Lane)';
+  const gateInfo = sessionSite?.gateInfo || 'Main Entrance Gate';
 
   const handleVoid = async () => {
     if (!session || !voidReason.trim()) return;
@@ -229,7 +229,7 @@ export const SessionDetail: React.FC = () => {
 
             <div className="flex justify-between items-center py-1 border-b border-neutral-50">
               <span className="text-neutral-500">Site Facility:</span>
-              <span className="font-medium text-neutral-800">{sessionSite?.name || 'AeroPark Site'}</span>
+              <span className="font-medium text-neutral-800">{sessionSite?.name || 'ParkIT Site'}</span>
             </div>
 
             <div className="flex justify-between items-center py-1">

@@ -69,7 +69,7 @@ async function runTestSuite() {
     const adminNoSymbol = validatePassword('AdminPassword123', 'ADMIN');
     assert('Admin password without symbol is rejected', !adminNoSymbol.valid);
 
-    const adminValid = validatePassword('AeroPark#Admin2026', 'ADMIN');
+    const adminValid = validatePassword('ParkIT#Admin2026', 'ADMIN');
     assert('Valid admin password passes', adminValid.valid);
 
     const opShort = validatePassword('Op1!', 'OPERATOR');

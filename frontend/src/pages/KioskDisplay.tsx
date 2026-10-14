@@ -400,7 +400,7 @@ export const KioskDisplay: React.FC = () => {
       <footer className="relative z-10 w-full px-6 py-4 border-t border-neutral-800 bg-[#0D1322] flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-neutral-400">
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-neutral-200 uppercase tracking-wider">
-            {siteData ? siteData.siteName : 'AeroPark Facility'}
+            {siteData ? siteData.siteName : 'ParkIT Facility'}
           </span>
           <span className="text-neutral-600">•</span>
           <span className="text-xs text-neutral-400">Public Billboard Display</span>

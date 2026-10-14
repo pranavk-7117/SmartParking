@@ -6,7 +6,7 @@ export interface PasswordValidationResult {
 }
 
 // Pre-computed bcrypt hash with cost 12 for timing-invariant dummy comparisons
-// Hash of dummy password "AeroPark#DummyPassword!2026"
+// Hash of dummy password "ParkIT#DummyPassword!2026"
 const DUMMY_HASH = '$2a$12$e8Yk2e.n.9W.M9e.l4SqeOS65U8N8c2pU0jN8iU0KzQY.o9kM2sSu';
 
 /**

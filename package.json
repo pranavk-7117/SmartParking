@@ -1,7 +1,7 @@
 {
-  "name": "smart-parking-management-system",
+  "name": "parkit-management-system",
   "version": "1.0.0",
-  "description": "Smart Parking Management System — Database Layer + Backend API",
+  "description": "ParkIT Parking Management System — Backend API",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --max-old-space-size=256 src/index.ts",
@@ -15,7 +15,7 @@
     "test:api": "ts-node test/api.ts"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "node -r ts-node/register prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

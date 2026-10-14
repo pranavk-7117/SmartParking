@@ -11,8 +11,8 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    // Current LAN IP of the PC (Wi-Fi). If USB ADB reverse is used, fallback automatically routes to 127.0.0.1.
-    private const val DEFAULT_BASE_URL = "http://192.168.2.103:3000/"
+    // Wi-Fi LAN IP of laptop: 192.168.1.42. Direct connection over shared Wi-Fi.
+    private const val DEFAULT_BASE_URL = "http://192.168.1.42:3000/"
     private const val ADB_FALLBACK_HOST = "127.0.0.1"
 
     fun create(sessionManager: SecureSessionManager, baseUrl: String = DEFAULT_BASE_URL): ApiService {

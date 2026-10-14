@@ -91,7 +91,7 @@ export const Login: React.FC = () => {
             <Car className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-black text-neutral-900 tracking-tight">
-            AeroPark System
+            ParkIT
           </h1>
           <p className="text-sm text-neutral-500">Sign in to continue to management dashboard</p>
         </div>
@@ -131,7 +131,7 @@ export const Login: React.FC = () => {
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. rajesh.admin"
+                  placeholder="e.g. admin"
                   leftIcon={<User className="w-4 h-4" />}
                   error={fieldErrors.username}
                   disabled={isLocked || isSubmitting}

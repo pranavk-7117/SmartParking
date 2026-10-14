@@ -240,6 +240,7 @@ interface LiveDataContextType {
   currentSite: Site;
   setCurrentSiteId: (siteId: string) => void;
   addSite: (site: Omit<Site, 'id'>) => Promise<Site>;
+  updateSite: (siteId: string, updates: Partial<Omit<Site, 'id'>>) => Promise<Site>;
   availability: AvailabilityData;
   allSlots: ParkingSlot[];
   slots: ParkingSlot[];
@@ -295,7 +296,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [isLoading, setIsLoading] = useState(true);
   const [sites, setSites] = useState<Site[]>([]);
   const [currentSiteId, setCurrentSiteIdState] = useState<string>(() => {
-    return localStorage.getItem('sp_selected_site') || 'site-hadapsar';
+    return localStorage.getItem('sp_selected_site') || 'site-camp';
   });
 
   const setCurrentSiteId = useCallback((id: string) => {
@@ -344,15 +345,15 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
       setAllRateHistory(rateHistoryRaw.map(mapRateHistory));
       setOperators(operatorsRaw.map(mapOperator));
 
-      // Preserve 'all' view or user-selected site; default to AeroPark Hadapsar if available
+      // Preserve 'all' view or user-selected site; default to ParkIT Camp if available
       setCurrentSiteIdState((prev) => {
         if (prev === 'all') return 'all';
         if (prev && mappedSites.some((s) => s.id === prev)) return prev;
         const saved = localStorage.getItem('sp_selected_site');
         if (saved === 'all') return 'all';
         if (saved && mappedSites.some((s) => s.id === saved)) return saved;
-        const hadapsar = mappedSites.find((s) => s.id === 'site-hadapsar');
-        return hadapsar?.id ?? mappedSites[0]?.id ?? '';
+        const camp = mappedSites.find((s) => s.id === 'site-camp');
+        return camp?.id ?? mappedSites[0]?.id ?? '';
       });
     } catch (err) {
       console.error('[LiveData] Failed to load data:', err);
@@ -467,6 +468,17 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
       }
 
       setCurrentSiteId(site.id);
+      triggerFlash();
+      return site;
+    },
+    [triggerFlash, setCurrentSiteId]
+  );
+
+  const updateSite = useCallback(
+    async (siteId: string, updates: Partial<Omit<Site, 'id'>>): Promise<Site> => {
+      const updated = await api.put<ApiSite>(`/sites/${encodeURIComponent(siteId)}`, updates);
+      const site = mapSite(updated);
+      setSites((prev) => prev.map((s) => (s.id === siteId ? site : s)));
       triggerFlash();
       return site;
     },
@@ -754,6 +766,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
         currentSite,
         setCurrentSiteId,
         addSite,
+        updateSite,
         availability,
         allSlots,
         slots,

@@ -126,7 +126,7 @@ export const Dashboard: React.FC = () => {
   // Bar chart data for comparing sites occupancy side by side
   const siteComparisonChartData = useMemo(() => {
     return sitePerformance.map((sp) => ({
-      label: sp.site.name.replace('AeroPark – ', ''),
+      label: sp.site.name.replace('ParkIT – ', ''),
       value: sp.carVacant,
       secondaryValue: sp.scooterVacant,
     }));
@@ -566,7 +566,7 @@ export const Dashboard: React.FC = () => {
         {alerts.length === 0 ? (
           <div className="p-4 rounded-control bg-emerald-50/50 border border-emerald-100 flex items-center gap-3 text-xs text-emerald-800">
             <CheckCircle2 className="w-4 h-4 text-success" />
-            <span>No alerts — all parking hardware and ANPR cameras operating normally.</span>
+            <span>No alerts — all parking systems operating normally.</span>
           </div>
         ) : (
           <div className="space-y-2.5">

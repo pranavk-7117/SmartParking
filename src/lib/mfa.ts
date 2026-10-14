@@ -108,7 +108,7 @@ export async function generateTotpSetup(username: string): Promise<{
   const otpauthUri = generateURI({
     secret,
     label: username,
-    issuer: 'AeroPark',
+    issuer: 'ParkIT',
   });
 
   const qrCodeDataUrl = await qrcode.toDataURL(otpauthUri);
