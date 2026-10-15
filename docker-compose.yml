@@ -32,14 +32,15 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-parkit_user}:${POSTGRES_PASSWORD:-change_me_db_password}@db:5432/${POSTGRES_DB:-parkit}?schema=public
       JWT_SECRET: ${JWT_SECRET:-replace_with_strong_secret_min_32_chars}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      MFA_ENC_KEY: ${MFA_ENC_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       PORT: 3000
       NODE_ENV: production
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_me_admin_password}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       OPERATOR_USERNAME: ${OPERATOR_USERNAME:-operator}
-      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:-change_me_operator_password}
+      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:-operator123}
     ports:
       - "3000:3000"
 

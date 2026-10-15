@@ -25,16 +25,18 @@ function validateEnv(): void {
     errors.push('JWT_SECRET is using a known insecure default value. Set a strong random secret.');
   }
 
-  // MFA_ENC_KEY: if set, must be exactly 64 hex characters (32 bytes)
+  // MFA_ENC_KEY: must be defined in production and be exactly 64 hex characters (32 bytes)
   const mfaKey = process.env.MFA_ENC_KEY;
-  if (mfaKey !== undefined && mfaKey !== '') {
-    if (!/^[0-9a-fA-F]{64}$/.test(mfaKey)) {
-      errors.push('MFA_ENC_KEY must be exactly 64 hex characters (32 bytes)');
+  if (!mfaKey || mfaKey.trim() === '') {
+    if (process.env.NODE_ENV === 'production') {
+      errors.push('MFA_ENC_KEY must be set in production');
     }
+  } else if (!/^[0-9a-fA-F]{64}$/.test(mfaKey)) {
+    errors.push('MFA_ENC_KEY must be exactly 64 hex characters (32 bytes)');
   }
 
   // CORS_ALLOWED_ORIGINS: must be defined and non-empty in production
-  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS || process.env.ALLOWED_ORIGINS;
   if (!allowedOrigins || allowedOrigins.trim() === '') {
     if (process.env.NODE_ENV === 'production') {
       errors.push('CORS_ALLOWED_ORIGINS must be defined in production');

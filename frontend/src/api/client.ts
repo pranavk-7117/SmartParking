@@ -1,28 +1,32 @@
 /**
  * Centralised API client for the Smart Parking Admin Dashboard.
- * Injects JWT from localStorage and X-Client-Type: admin-web on every request,
- * handles 401 by clearing stored tokens, captures X-Total-Count header,
- * and throws structured errors on non-2xx responses.
+ * Injects JWT from sessionStorage (falls back to localStorage for migration) on every request.
+ * Adds X-Client-Type: admin-web header, handles 401 by clearing stored tokens,
+ * captures X-Total-Count header, and throws structured errors on non-2xx responses.
+ * Tokens are stored in sessionStorage (not localStorage) to prevent cross-tab persistence.
  */
 
 const BASE = '/api/v1';
 
 function getToken(): string | null {
-  return localStorage.getItem('sp_token');
+  return sessionStorage.getItem('sp_token') || localStorage.getItem('sp_token');
 }
 
 export function clearToken(): void {
+  sessionStorage.removeItem('sp_token');
+  sessionStorage.removeItem('sp_user');
   localStorage.removeItem('sp_token');
   localStorage.removeItem('sp_user');
 }
 
 export function saveToken(token: string): void {
-  localStorage.setItem('sp_token', token);
+  sessionStorage.setItem('sp_token', token);
+  localStorage.removeItem('sp_token'); // Clean up any lingering localStorage token
 }
 
 export function loadUser<T>(): T | null {
   try {
-    const raw = localStorage.getItem('sp_user');
+    const raw = sessionStorage.getItem('sp_user') || localStorage.getItem('sp_user');
     return raw ? (JSON.parse(raw) as T) : null;
   } catch {
     return null;
@@ -30,7 +34,8 @@ export function loadUser<T>(): T | null {
 }
 
 export function saveUser(user: unknown): void {
-  localStorage.setItem('sp_user', JSON.stringify(user));
+  sessionStorage.setItem('sp_user', JSON.stringify(user));
+  localStorage.removeItem('sp_user');
 }
 
 export interface ApiError extends Error {

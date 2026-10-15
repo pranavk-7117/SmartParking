@@ -1,20 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { VehicleType } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
 
 export const ratesRouter = Router();
-
-// ── Inline Admin Guard ───────────────────────────────────────────────────────
-function requireAdmin(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1]): boolean {
-  if (req.operator!.role !== 'admin') {
-    res.status(403).json({ error: 'Administrator access required' });
-    return false;
-  }
-  return true;
-}
 
 async function resolveLocationId(siteIdentifier?: string): Promise<string | undefined> {
   if (!siteIdentifier) return undefined;
@@ -38,7 +29,7 @@ ratesRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     let locationId: string | undefined;
 
-    if (req.operator!.role === 'operator') {
+    if (req.operator!.role.toUpperCase() === 'OPERATOR') {
       // Operators may only read rates for their assigned location
       locationId = req.operator!.locationId ?? undefined;
     } else {
@@ -125,9 +116,8 @@ ratesRouter.get('/history', requireAuth, async (req, res, next) => {
  * Updates a site's tariff and logs into audit history.
  * Admin-only. adminName is derived from req.operator.username (not accepted from body).
  */
-ratesRouter.post('/', requireAuth, async (req, res, next) => {
+ratesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
 
     // Note: adminName is intentionally NOT accepted from the request body.
     // It is always derived from the authenticated token's username.

@@ -1,20 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { VehicleType, SlotStatus, SessionStatus } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
 
 export const slotsRouter = Router();
-
-// ── Inline Admin Guard ───────────────────────────────────────────────────────
-function requireAdmin(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1]): boolean {
-  if (req.operator!.role !== 'admin') {
-    res.status(403).json({ error: 'Administrator access required' });
-    return false;
-  }
-  return true;
-}
 
 async function resolveLocationId(siteIdentifier?: string): Promise<string | undefined> {
   if (!siteIdentifier) return undefined;
@@ -34,7 +25,7 @@ slotsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     let locationId: string | undefined;
 
-    if (req.operator!.role === 'operator') {
+    if (req.operator!.role.toUpperCase() === 'OPERATOR') {
       // Operators may only see slots at their assigned location
       locationId = req.operator!.locationId ?? undefined;
     } else {
@@ -176,9 +167,8 @@ slotsRouter.get('/:id', requireAuth, async (req, res, next) => {
  * POST /api/v1/slots
  * Adds a new parking slot. Admin-only.
  */
-slotsRouter.post('/', requireAuth, async (req, res, next) => {
+slotsRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
 
     const schema = z.object({
       siteId:       z.string().min(1),
@@ -219,9 +209,8 @@ slotsRouter.post('/', requireAuth, async (req, res, next) => {
  * PATCH /api/v1/slots/:id/status
  * Updates slot status (Vacant / Occupied / Deactivated). Admin-only.
  */
-slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
+slotsRouter.patch('/:id/status', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
 
     const id     = req.params.id as string;
     const isUuid = id.length === 36 && id.includes('-');
@@ -302,9 +291,8 @@ slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
  * PATCH /api/v1/slots/:id/category
  * Reassigns slot category (Car / Scooter). Admin-only.
  */
-slotsRouter.patch('/:id/category', requireAuth, async (req, res, next) => {
+slotsRouter.patch('/:id/category', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
 
     const id     = req.params.id as string;
     const isUuid = id.length === 36 && id.includes('-');

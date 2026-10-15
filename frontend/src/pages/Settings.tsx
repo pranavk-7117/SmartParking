@@ -8,6 +8,8 @@ import {
   Save,
   Plus,
   MapPin,
+  KeyRound,
+  Shield,
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -15,16 +17,25 @@ import { Input, Select } from '../components/common/Input';
 import { Modal } from '../components/common/Modal';
 import { useToast } from '../context/ToastContext';
 import { useLiveData } from '../context/LiveDataContext';
+import { api } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 
 export const Settings: React.FC = () => {
   const { showToast } = useToast();
   const { sites, addSite } = useLiveData();
+  const { currentUser } = useAuth();
 
   const [facilityName, setFacilityName] = useState('ParkIT Facility');
   const [terminalCode, setTerminalCode] = useState('');
   const [gracePeriod, setGracePeriod] = useState('15');
   const [receiptWidth, setReceiptWidth] = useState('80mm');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Change Password state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // Add New Site Modal State per §3.11.1
   const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
@@ -36,6 +47,38 @@ export const Settings: React.FC = () => {
   const [newCarRate, setNewCarRate] = useState('30');
   const [newScooterRate, setNewScooterRate] = useState('15');
   const [newSiteStatus, setNewSiteStatus] = useState<'Active' | 'Coming Soon'>('Active');
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword.trim()) {
+      showToast('Current password is required.', 'error');
+      return;
+    }
+    if (!newPassword.trim()) {
+      showToast('New password is required.', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('New passwords do not match.', 'error');
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await api.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
+      showToast('Password changed successfully. You will need to log in again next session.', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      const msg = err?.body?.error || err?.message || 'Failed to change password.';
+      showToast(msg, 'error');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,6 +319,59 @@ export const Settings: React.FC = () => {
           </Button>
         </div>
       </form>
+
+      {/* Change Password Section */}
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center gap-2.5 pb-2 border-b border-neutral-100">
+          <KeyRound className="w-5 h-5 text-primary" />
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-neutral-900">
+              Change Password
+            </h2>
+            <p className="text-xs text-neutral-500">
+              Logged in as <strong>{currentUser?.username ?? 'you'}</strong>. Changing your password will invalidate other active sessions.
+            </p>
+          </div>
+        </div>
+        <form onSubmit={handleChangePassword} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Input
+            label="Current Password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+          />
+          <Input
+            label="New Password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            autoComplete="new-password"
+            helperText="Min 8 chars, must include uppercase, lowercase, digit &amp; symbol"
+          />
+          <Input
+            label="Confirm New Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            autoComplete="new-password"
+          />
+          <div className="md:col-span-3 flex justify-end pt-1">
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isChangingPassword}
+              leftIcon={<Shield className="w-4 h-4" />}
+            >
+              Update Password
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {/* Add New Site Modal per §3.11.1 */}
       <Modal

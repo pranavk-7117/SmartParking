@@ -10,22 +10,12 @@ import {
   Location,
   Bill,
 } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
 import { paginationSchema } from '../lib/validation';
 
 export const sessionsRouter = Router();
-
-// ── Inline Admin Guard ───────────────────────────────────────────────────────
-// Foundation's requireAdmin is in auth.ts (frozen). We implement a local helper.
-function requireAdmin(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1]): boolean {
-  if (req.operator!.role !== 'admin') {
-    res.status(403).json({ error: 'Administrator access required' });
-    return false;
-  }
-  return true;
-}
 
 type SessionWithRelations = ParkingSession & {
   vehicle: Vehicle;
@@ -204,10 +194,8 @@ sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
  * Admin-only. Soft-voids a session with a mandatory reason.
  * Sets status = VOIDED, frees the slot if still ACTIVE, records audit log.
  */
-sessionsRouter.post('/:id/void', requireAuth, async (req, res, next) => {
+sessionsRouter.post('/:id/void', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
-
     const id = String(req.params.id);
 
     const voidSchema = z.object({
@@ -225,12 +213,18 @@ sessionsRouter.post('/:id/void', requireAuth, async (req, res, next) => {
       throw new AppError('Session is already voided', 409);
     }
 
+    const voidedAt = new Date();
+    const voidedBy = req.operator!.username;
+
     await prisma.$transaction(async (tx) => {
-      // Void the session and free slot
+      // Soft-void the session with audit trace
       await tx.parkingSession.update({
         where: { id },
         data: {
-          status: SessionStatus.COMPLETED,
+          status: SessionStatus.VOIDED,
+          voidReason: reason,
+          voidedAt,
+          voidedBy,
         },
       });
 
@@ -248,8 +242,8 @@ sessionsRouter.post('/:id/void', requireAuth, async (req, res, next) => {
       sessionId:  id,
       status:     'VOIDED',
       voidReason: reason,
-      voidedAt:   new Date().toISOString(),
-      voidedBy:   req.operator!.username,
+      voidedAt:   voidedAt.toISOString(),
+      voidedBy,
     });
   } catch (err) {
     next(err);

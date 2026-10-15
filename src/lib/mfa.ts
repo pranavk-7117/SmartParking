@@ -7,7 +7,14 @@ const MFA_AUDIENCE = 'aero-mfa-pending';
 const MFA_PENDING_EXPIRES_IN = 300; // 5 minutes
 
 function getEncryptionKey(): Buffer {
-  const rawKey = process.env.MFA_ENC_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+  const rawKey = process.env.MFA_ENC_KEY;
+  if (!rawKey) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Server misconfiguration: MFA_ENC_KEY environment variable is mandatory in production');
+    }
+    const devFallback = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    return Buffer.from(devFallback, 'hex');
+  }
   if (rawKey.length === 64) {
     return Buffer.from(rawKey, 'hex');
   }

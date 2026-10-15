@@ -1,20 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { VehicleType, SlotStatus } from '@prisma/client';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
 
 export const sitesRouter = Router();
-
-// ── Inline Admin Guard ───────────────────────────────────────────────────────
-function requireAdmin(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1]): boolean {
-  if (req.operator!.role !== 'admin') {
-    res.status(403).json({ error: 'Administrator access required' });
-    return false;
-  }
-  return true;
-}
 
 const createSiteSchema = z.object({
   name:               z.string().min(2),
@@ -38,7 +29,7 @@ const updateSiteSchema = createSiteSchema.partial();
  */
 sitesRouter.get('/', requireAuth, async (req, res, next) => {
   try {
-    const isOperator = req.operator!.role === 'operator';
+    const isOperator = req.operator!.role.toUpperCase() === 'OPERATOR';
     const operatorLocationId = req.operator!.locationId;
 
     const locations = await prisma.location.findMany({
@@ -145,9 +136,8 @@ sitesRouter.get('/:id', requireAuth, async (req, res, next) => {
  * POST /api/v1/sites
  * Registers a new physical parking site. Admin-only.
  */
-sitesRouter.post('/', requireAuth, async (req, res, next) => {
+sitesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
 
     const raw  = createSiteSchema.parse(req.body);
     const code = raw.code ?? ('site-' + raw.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-'));
@@ -214,9 +204,8 @@ sitesRouter.post('/', requireAuth, async (req, res, next) => {
  * PUT /api/v1/sites/:id
  * Updates an existing site. Admin-only.
  */
-sitesRouter.put('/:id', requireAuth, async (req, res, next) => {
+sitesRouter.put('/:id', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    if (!requireAdmin(req, res)) return;
 
     const id     = req.params.id as string;
     const isUuid = id.length === 36 && id.includes('-');
