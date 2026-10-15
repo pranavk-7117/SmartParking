@@ -23,12 +23,19 @@ class SecureSessionManager(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    fun saveSession(token: String, operatorId: String, operatorUsername: String, role: String) {
+    fun saveSession(
+        token: String,
+        operatorId: String,
+        operatorUsername: String,
+        role: String,
+        mustChangePassword: Boolean = false
+    ) {
         sharedPreferences.edit()
             .putString(KEY_AUTH_TOKEN, token)
             .putString(KEY_OPERATOR_ID, operatorId)
             .putString(KEY_OPERATOR_USERNAME, operatorUsername)
             .putString(KEY_OPERATOR_ROLE, role)
+            .putBoolean(KEY_MUST_CHANGE_PASSWORD, mustChangePassword)
             .apply()
     }
 
@@ -39,6 +46,12 @@ class SecureSessionManager(context: Context) {
     fun getOperatorUsername(): String? = sharedPreferences.getString(KEY_OPERATOR_USERNAME, null)
 
     fun getOperatorRole(): String? = sharedPreferences.getString(KEY_OPERATOR_ROLE, null)
+
+    fun mustChangePassword(): Boolean = sharedPreferences.getBoolean(KEY_MUST_CHANGE_PASSWORD, false)
+
+    fun setMustChangePassword(mustChange: Boolean) {
+        sharedPreferences.edit().putBoolean(KEY_MUST_CHANGE_PASSWORD, mustChange).apply()
+    }
 
     fun saveOperatorUsername(username: String) {
         sharedPreferences.edit().putString(KEY_OPERATOR_USERNAME, username).apply()
@@ -56,5 +69,6 @@ class SecureSessionManager(context: Context) {
         private const val KEY_OPERATOR_ID = "operator_id"
         private const val KEY_OPERATOR_USERNAME = "operator_username"
         private const val KEY_OPERATOR_ROLE = "operator_role"
+        private const val KEY_MUST_CHANGE_PASSWORD = "must_change_password"
     }
 }

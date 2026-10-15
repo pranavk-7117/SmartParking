@@ -290,26 +290,49 @@ class ParkingRepository(
                     )
                 }
 
-                // Refresh active sessions
-                val sessionsRes = apiService.getActiveSessions(locationId = dto.locationId)
-                if (sessionsRes.isSuccessful && sessionsRes.body() != null) {
-                    val serverSessions = sessionsRes.body()!!.map { s ->
-                        ActiveSessionEntity(
-                            id = s.sessionId,
-                            locationId = s.locationId,
-                            vehicleId = s.vehicleId,
-                            vehicleNumber = s.vehicleNumber,
-                            vehicleType = s.vehicleType,
-                            slotId = s.slotId,
-                            slotCode = s.slotCode,
-                            inTime = parseIsoDate(s.inTime),
-                            inTimeIso = s.inTime,
-                            isPendingSync = false,
-                            idempotencyKey = s.sessionId
-                        )
+                // Refresh active sessions (paginating with limit/offset and inspecting X-Total-Count)
+                val allServerSessions = mutableListOf<com.example.smartparkingoperator.data.remote.dto.ActiveSessionDto>()
+                var offset = 0
+                val limit = 200
+                var hasMore = true
+
+                while (hasMore) {
+                    val sessionsRes = apiService.getActiveSessions(
+                        locationId = dto.locationId,
+                        limit = limit,
+                        offset = offset
+                    )
+                    if (sessionsRes.isSuccessful && sessionsRes.body() != null) {
+                        val batch = sessionsRes.body()!!
+                        allServerSessions.addAll(batch)
+                        val totalCountHeader = sessionsRes.headers()["X-Total-Count"]?.toIntOrNull()
+                        val totalCount = totalCountHeader ?: batch.size
+                        offset += batch.size
+                        hasMore = batch.size == limit && offset < totalCount
+                    } else {
+                        if (sessionsRes.code() == 401) {
+                            sessionManager.clearSession()
+                        }
+                        hasMore = false
                     }
-                    database.activeSessionDao().syncActiveSessions(serverSessions)
                 }
+
+                val serverSessions = allServerSessions.map { s ->
+                    ActiveSessionEntity(
+                        id = s.sessionId,
+                        locationId = s.locationId,
+                        vehicleId = s.vehicleId,
+                        vehicleNumber = s.vehicleNumber,
+                        vehicleType = s.vehicleType,
+                        slotId = s.slotId,
+                        slotCode = s.slotCode,
+                        inTime = parseIsoDate(s.inTime),
+                        inTimeIso = s.inTime,
+                        isPendingSync = false,
+                        idempotencyKey = s.sessionId
+                    )
+                }
+                database.activeSessionDao().syncActiveSessions(serverSessions)
 
                 // Refresh rates specifically for this assigned location
                 val ratesRes = apiService.getRates(siteId = dto.locationId)
@@ -353,6 +376,9 @@ class ParkingRepository(
                         database.pendingActionDao().deleteActionById(action.id)
                         database.activeSessionDao().markSessionSynced(action.id, action.id)
                     } else {
+                        if (response.code() == 401) {
+                            sessionManager.clearSession()
+                        }
                         allSuccess = false
                         database.pendingActionDao().updateActionStatus(
                             id = action.id,
@@ -368,6 +394,9 @@ class ParkingRepository(
                         database.pendingActionDao().deleteActionById(action.id)
                         database.receiptDao().markReceiptConfirmed(exitDto.sessionId)
                     } else {
+                        if (response.code() == 401) {
+                            sessionManager.clearSession()
+                        }
                         allSuccess = false
                         database.pendingActionDao().updateActionStatus(
                             id = action.id,

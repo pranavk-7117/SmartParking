@@ -7,12 +7,40 @@ data class LoginRequest(
     @SerializedName("password") val password: String
 )
 
-data class LoginResponse(
-    @SerializedName("access_token") val accessToken: String,
-    @SerializedName("operator_id") val operatorId: String,
-    @SerializedName("username") val username: String,
-    @SerializedName("role") val role: String
+data class LoginUserDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("role") val role: String? = null,
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("locationId") val locationId: String? = null,
+    @SerializedName("mustChangePassword") val mustChangePassword: Boolean = false
 )
+
+data class LoginResponse(
+    @SerializedName("access_token") val accessToken: String? = null,
+    @SerializedName("token") val token: String? = null,
+    @SerializedName("operator_id") val operatorId: String? = null,
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("role") val role: String? = null,
+    @SerializedName("mustChangePassword") val mustChangePassword: Boolean = false,
+    @SerializedName("user") val user: LoginUserDto? = null
+) {
+    val effectiveToken: String
+        get() = accessToken ?: token ?: ""
+
+    val effectiveOperatorId: String
+        get() = operatorId ?: user?.id ?: ""
+
+    val effectiveUsername: String
+        get() = username ?: user?.username ?: ""
+
+    val effectiveRole: String
+        get() = role ?: user?.role ?: "operator"
+
+    val effectiveMustChangePassword: Boolean
+        get() = mustChangePassword || (user?.mustChangePassword == true)
+}
 
 data class LocationAssignmentDto(
     @SerializedName("location_id") val locationId: String,

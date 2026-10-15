@@ -4,7 +4,17 @@ import { VehicleType, SlotStatus, SessionStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 import prisma from '../lib/prisma';
+
 export const slotsRouter = Router();
+
+// ── Inline Admin Guard ───────────────────────────────────────────────────────
+function requireAdmin(req: Parameters<typeof requireAuth>[0], res: Parameters<typeof requireAuth>[1]): boolean {
+  if (req.operator!.role !== 'admin') {
+    res.status(403).json({ error: 'Administrator access required' });
+    return false;
+  }
+  return true;
+}
 
 async function resolveLocationId(siteIdentifier?: string): Promise<string | undefined> {
   if (!siteIdentifier) return undefined;
@@ -17,12 +27,20 @@ async function resolveLocationId(siteIdentifier?: string): Promise<string | unde
 
 /**
  * GET /api/v1/slots
- * Returns all parking slots, optionally filtered by siteId
+ * Returns all parking slots, optionally filtered by siteId.
+ * Operators are scoped to their assigned location.
  */
 slotsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
-    const siteQuery = req.query.siteId as string | undefined;
-    const locationId = await resolveLocationId(siteQuery);
+    let locationId: string | undefined;
+
+    if (req.operator!.role === 'operator') {
+      // Operators may only see slots at their assigned location
+      locationId = req.operator!.locationId ?? undefined;
+    } else {
+      const siteQuery = req.query.siteId as string | undefined;
+      locationId = await resolveLocationId(siteQuery);
+    }
 
     const slots = await prisma.slot.findMany({
       where: locationId ? { locationId } : undefined,
@@ -42,22 +60,22 @@ slotsRouter.get('/', requireAuth, async (req, res, next) => {
       const category: 'Car' | 'Scooter' = s.slotType === VehicleType.CAR ? 'Car' : 'Scooter';
 
       let status: 'Vacant' | 'Occupied' | 'Deactivated' = 'Vacant';
-      if (s.status === SlotStatus.OCCUPIED) status = 'Occupied';
+      if (s.status === SlotStatus.OCCUPIED)       status = 'Occupied';
       else if (s.status === SlotStatus.OUT_OF_SERVICE) status = 'Deactivated';
 
       return {
         id: s.locationCode,
         dbId: s.id,
-        siteId: s.location?.code ?? '',
+        siteId:     s.location?.code ?? '',
         locationId: s.locationId,
         category,
         locationCode: s.locationCode,
         status,
         currentVehicleNumber: activeSession?.vehicle.vehicleNumber ?? null,
-        currentSessionId: activeSession?.id ?? null,
-        deactivationReason: s.deactivationReason ?? null,
-        deactivatedAt: s.deactivatedAt?.toISOString() ?? null,
-        deactivatedBy: s.deactivatedBy ?? null,
+        currentSessionId:     activeSession?.id ?? null,
+        deactivationReason:   s.deactivationReason ?? null,
+        deactivatedAt:        s.deactivatedAt?.toISOString() ?? null,
+        deactivatedBy:        s.deactivatedBy ?? null,
       };
     });
 
@@ -69,13 +87,14 @@ slotsRouter.get('/', requireAuth, async (req, res, next) => {
 
 /**
  * GET /api/v1/slots/:id
- * Returns single slot details with audit history
+ * Returns single slot details with audit history.
+ * Operators may only access slots at their assigned location.
  */
 slotsRouter.get('/:id', requireAuth, async (req, res, next) => {
   try {
-    const id = req.params.id as string;
-    const isUuid = id.length === 36 && id.includes('-');
-    const siteQuery = req.query.siteId as string | undefined;
+    const id         = req.params.id as string;
+    const isUuid     = id.length === 36 && id.includes('-');
+    const siteQuery  = req.query.siteId as string | undefined;
     const locationId = await resolveLocationId(siteQuery);
 
     const slot = await prisma.slot.findFirst({
@@ -98,48 +117,54 @@ slotsRouter.get('/:id', requireAuth, async (req, res, next) => {
       },
     });
 
-    if (!slot) {
-      throw new AppError('Slot not found', 404);
+    if (!slot) throw new AppError('Slot not found', 404);
+
+    // assertSiteAccess equivalent for operators
+    if (req.operator!.role === 'operator') {
+      const operatorLocationId = req.operator!.locationId;
+      if (slot.locationId !== operatorLocationId) {
+        throw new AppError('You do not have access to this slot', 403);
+      }
     }
 
     const activeSession = slot.sessions.find((s) => s.status === SessionStatus.ACTIVE);
     const category: 'Car' | 'Scooter' = slot.slotType === VehicleType.CAR ? 'Car' : 'Scooter';
 
     let status: 'Vacant' | 'Occupied' | 'Deactivated' = 'Vacant';
-    if (slot.status === SlotStatus.OCCUPIED) status = 'Occupied';
+    if (slot.status === SlotStatus.OCCUPIED)       status = 'Occupied';
     else if (slot.status === SlotStatus.OUT_OF_SERVICE) status = 'Deactivated';
 
     res.json({
       id: slot.locationCode,
       dbId: slot.id,
-      siteId: slot.location?.code ?? '',
-      siteName: slot.location?.name ?? '',
+      siteId:      slot.location?.code ?? '',
+      siteName:    slot.location?.name ?? '',
       category,
       locationCode: slot.locationCode,
       status,
       currentVehicleNumber: activeSession?.vehicle.vehicleNumber ?? null,
-      currentSessionId: activeSession?.id ?? null,
-      deactivationReason: slot.deactivationReason ?? null,
-      deactivatedAt: slot.deactivatedAt?.toISOString() ?? null,
-      deactivatedBy: slot.deactivatedBy ?? null,
+      currentSessionId:     activeSession?.id ?? null,
+      deactivationReason:   slot.deactivationReason ?? null,
+      deactivatedAt:        slot.deactivatedAt?.toISOString() ?? null,
+      deactivatedBy:        slot.deactivatedBy ?? null,
       deactivationEvents: slot.deactivationEvents.map((e) => ({
-        id: e.id,
-        slotId: slot.locationCode,
-        siteId: slot.location?.code ?? '',
-        action: e.action,
-        reason: e.reason,
+        id:        e.id,
+        slotId:    slot.locationCode,
+        siteId:    slot.location?.code ?? '',
+        action:    e.action,
+        reason:    e.reason,
         actionedBy: e.actionedBy,
         actionedAt: e.actionedAt.toISOString(),
       })),
       recentSessions: slot.sessions.map((s) => ({
-        id: s.id,
-        vehicleNumber: s.vehicle.vehicleNumber,
-        category: s.vehicle.vehicleType === VehicleType.CAR ? 'Car' : 'Scooter',
-        inTime: s.inTime.toISOString(),
-        outTime: s.outTime?.toISOString() ?? null,
+        id:              s.id,
+        vehicleNumber:   s.vehicle.vehicleNumber,
+        category:        s.vehicle.vehicleType === VehicleType.CAR ? 'Car' : 'Scooter',
+        inTime:          s.inTime.toISOString(),
+        outTime:         s.outTime?.toISOString() ?? null,
         durationMinutes: s.bill?.durationMinutes ?? null,
-        amount: s.bill?.amount ? parseFloat(s.bill.amount.toString()) : null,
-        status: s.status === SessionStatus.ACTIVE ? 'Active' : 'Completed',
+        amount:          s.bill?.amount ? parseFloat(s.bill.amount.toString()) : null,
+        status:          s.status === SessionStatus.ACTIVE ? 'Active' : 'Completed',
       })),
     });
   } catch (err) {
@@ -149,17 +174,19 @@ slotsRouter.get('/:id', requireAuth, async (req, res, next) => {
 
 /**
  * POST /api/v1/slots
- * Adds a new parking slot
+ * Adds a new parking slot. Admin-only.
  */
 slotsRouter.post('/', requireAuth, async (req, res, next) => {
   try {
+    if (!requireAdmin(req, res)) return;
+
     const schema = z.object({
-      siteId: z.string().min(1),
-      category: z.enum(['Car', 'Scooter']),
+      siteId:       z.string().min(1),
+      category:     z.enum(['Car', 'Scooter']),
       locationCode: z.string().min(1),
     });
 
-    const body = schema.parse(req.body);
+    const body       = schema.parse(req.body);
     const locationId = await resolveLocationId(body.siteId);
     if (!locationId) throw new AppError('Site not found', 404);
 
@@ -176,12 +203,12 @@ slotsRouter.post('/', requireAuth, async (req, res, next) => {
     });
 
     res.status(201).json({
-      id: slot.locationCode,
-      dbId: slot.id,
-      siteId: slot.location?.code ?? body.siteId,
-      category: body.category,
+      id:           slot.locationCode,
+      dbId:         slot.id,
+      siteId:       slot.location?.code ?? body.siteId,
+      category:     body.category,
       locationCode: slot.locationCode,
-      status: 'Vacant',
+      status:       'Vacant',
     });
   } catch (err) {
     next(err);
@@ -190,19 +217,21 @@ slotsRouter.post('/', requireAuth, async (req, res, next) => {
 
 /**
  * PATCH /api/v1/slots/:id/status
- * Updates slot status (Vacant / Occupied / Deactivated)
+ * Updates slot status (Vacant / Occupied / Deactivated). Admin-only.
  */
 slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
   try {
-    const id = req.params.id as string;
+    if (!requireAdmin(req, res)) return;
+
+    const id     = req.params.id as string;
     const isUuid = id.length === 36 && id.includes('-');
     const schema = z.object({
-      siteId: z.string().optional(),
-      status: z.enum(['Vacant', 'Occupied', 'Deactivated']),
+      siteId:             z.string().optional(),
+      status:             z.enum(['Vacant', 'Occupied', 'Deactivated']),
       deactivationReason: z.string().optional(),
     });
 
-    const body = schema.parse(req.body);
+    const body       = schema.parse(req.body);
     const locationId = await resolveLocationId(body.siteId);
 
     const slot = await prisma.slot.findFirst({
@@ -216,12 +245,12 @@ slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
 
     if (!slot) throw new AppError('Slot not found', 404);
 
-    const adminName = req.operator?.username ?? 'Admin';
+    const adminName = req.operator!.username ?? 'Admin';
     let dbStatus: SlotStatus;
 
-    if (body.status === 'Occupied') dbStatus = SlotStatus.OCCUPIED;
+    if (body.status === 'Occupied')    dbStatus = SlotStatus.OCCUPIED;
     else if (body.status === 'Deactivated') dbStatus = SlotStatus.OUT_OF_SERVICE;
-    else dbStatus = SlotStatus.VACANT;
+    else                               dbStatus = SlotStatus.VACANT;
 
     const isDeactivating = body.status === 'Deactivated';
     const isReactivating = slot.status === SlotStatus.OUT_OF_SERVICE && body.status !== 'Deactivated';
@@ -229,21 +258,21 @@ slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
     const updated = await prisma.$transaction(async (tx) => {
       const s = await tx.slot.update({
         where: { id: slot.id },
-        data: {
-          status: dbStatus,
+        data:  {
+          status:             dbStatus,
           deactivationReason: isDeactivating ? body.deactivationReason ?? 'Maintenance' : isReactivating ? null : slot.deactivationReason,
-          deactivatedAt: isDeactivating ? new Date() : isReactivating ? null : slot.deactivatedAt,
-          deactivatedBy: isDeactivating ? adminName : isReactivating ? null : slot.deactivatedBy,
+          deactivatedAt:      isDeactivating ? new Date() : isReactivating ? null : slot.deactivatedAt,
+          deactivatedBy:      isDeactivating ? adminName : isReactivating ? null : slot.deactivatedBy,
         },
       });
 
       if ((isDeactivating || isReactivating) && slot.locationId) {
         await tx.slotDeactivationEvent.create({
           data: {
-            slotId: slot.id,
+            slotId:     slot.id,
             locationId: slot.locationId,
-            action: isDeactivating ? 'deactivate' : 'reactivate',
-            reason: isDeactivating
+            action:     isDeactivating ? 'deactivate' : 'reactivate',
+            reason:     isDeactivating
               ? body.deactivationReason ?? 'Maintenance'
               : 'Slot reactivated and verified operational',
             actionedBy: adminName,
@@ -256,13 +285,13 @@ slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
     });
 
     res.json({
-      id: updated.locationCode,
-      dbId: updated.id,
-      siteId: slot.location?.code ?? '',
-      status: body.status,
+      id:                 updated.locationCode,
+      dbId:               updated.id,
+      siteId:             slot.location?.code ?? '',
+      status:             body.status,
       deactivationReason: updated.deactivationReason,
-      deactivatedAt: updated.deactivatedAt?.toISOString() ?? null,
-      deactivatedBy: updated.deactivatedBy,
+      deactivatedAt:      updated.deactivatedAt?.toISOString() ?? null,
+      deactivatedBy:      updated.deactivatedBy,
     });
   } catch (err) {
     next(err);
@@ -271,18 +300,20 @@ slotsRouter.patch('/:id/status', requireAuth, async (req, res, next) => {
 
 /**
  * PATCH /api/v1/slots/:id/category
- * Reassigns slot category (Car / Scooter)
+ * Reassigns slot category (Car / Scooter). Admin-only.
  */
 slotsRouter.patch('/:id/category', requireAuth, async (req, res, next) => {
   try {
-    const id = req.params.id as string;
+    if (!requireAdmin(req, res)) return;
+
+    const id     = req.params.id as string;
     const isUuid = id.length === 36 && id.includes('-');
     const schema = z.object({
-      siteId: z.string().optional(),
+      siteId:   z.string().optional(),
       category: z.enum(['Car', 'Scooter']),
     });
 
-    const body = schema.parse(req.body);
+    const body       = schema.parse(req.body);
     const locationId = await resolveLocationId(body.siteId);
 
     const slot = await prisma.slot.findFirst({
@@ -297,14 +328,12 @@ slotsRouter.patch('/:id/category', requireAuth, async (req, res, next) => {
 
     const updated = await prisma.slot.update({
       where: { id: slot.id },
-      data: {
-        slotType: body.category === 'Car' ? VehicleType.CAR : VehicleType.SCOOTER,
-      },
+      data:  { slotType: body.category === 'Car' ? VehicleType.CAR : VehicleType.SCOOTER },
     });
 
     res.json({
-      id: updated.locationCode,
-      dbId: updated.id,
+      id:       updated.locationCode,
+      dbId:     updated.id,
       category: body.category,
     });
   } catch (err) {

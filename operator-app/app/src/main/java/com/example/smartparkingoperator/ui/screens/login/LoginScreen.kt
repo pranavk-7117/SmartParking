@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(
     authRepository: AuthRepository,
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (mustChangePassword: Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var username by remember { mutableStateOf("") }
@@ -92,7 +92,10 @@ fun LoginScreen(
                 val result = authRepository.login(username, password)
                 isLoading = false
                 result.fold(
-                    onSuccess = { onLoginSuccess() },
+                    onSuccess = {
+                        val mustChange = authRepository.mustChangePassword()
+                        onLoginSuccess(mustChange)
+                    },
                     onFailure = { err -> errorMessage = err.localizedMessage ?: "Login failed. Check credentials." }
                 )
             }
