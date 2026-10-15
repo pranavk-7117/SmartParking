@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   SessionStatus,
-  VehicleType,
   SlotStatus,
+  VehicleType,
   ParkingSession,
   Vehicle,
   Slot,
@@ -181,7 +181,7 @@ sessionsRouter.get('/:id', requireAuth, async (req, res, next) => {
       siteId:       s.slot.location?.code ?? '',
       siteName:     s.slot.location?.name ?? 'AeroPark Facility',
       siteAddress:  s.slot.location?.address ?? 'Pune, Maharashtra',
-      gateInfo:     s.slot.location?.gateInfo ?? 'Terminal 2 • Gates 1 & 2',
+      gateInfo:     s.slot.location?.gateInfo ?? 'Main Entrance Gate',
       vehicleNumber: s.vehicle.vehicleNumber,
       category,
       slotId: s.slot.locationCode,

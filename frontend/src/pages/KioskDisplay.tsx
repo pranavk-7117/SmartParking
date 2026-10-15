@@ -1,29 +1,87 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useParams, Link } from 'react-router-dom';
 import {
   Car,
   Bike,
   ParkingSquare,
   AlertOctagon,
-  Radio,
   ArrowLeft,
   Maximize2,
   Minimize2,
   Smartphone,
   Monitor,
+  AlertCircle,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
 
+interface DisplayData {
+  siteId: string;
+  siteName: string;
+  carAvailable: number;
+  carTotal: number;
+  scooterAvailable: number;
+  scooterTotal: number;
+  totalAvailable: number;
+  totalSlots: number;
+  isFacilityFull: boolean;
+  updatedAt: string;
+}
+
 export const KioskDisplay: React.FC = () => {
+  const { siteId } = useParams<{ siteId?: string }>();
   const [searchParams] = useSearchParams();
   const queryStateFull = searchParams.get('state') === 'full';
 
-  const { availability, hasRecentUpdate, isFacilityFull, toggleFacilityFullSimulation } =
+  const { availability: defaultAvailability, hasRecentUpdate: contextRecentUpdate, isFacilityFull: contextFull, toggleFacilityFullSimulation } =
     useLiveData();
 
   const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [secondsAgo, setSecondsAgo] = useState(0);
+
+  const [siteData, setSiteData] = useState<DisplayData | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [hasRecentUpdate, setHasRecentUpdate] = useState(false);
+
+  // If a specific siteId is provided, fetch and poll /api/v1/display/:siteId directly
+  useEffect(() => {
+    if (!siteId) {
+      setNotFound(false);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchSiteDisplay = async () => {
+      try {
+        const res = await fetch(`/api/v1/display/${encodeURIComponent(siteId)}`);
+        if (res.status === 404) {
+          if (isMounted) setNotFound(true);
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setNotFound(false);
+            setSiteData(data);
+            setHasRecentUpdate(true);
+            setTimeout(() => setHasRecentUpdate(false), 800);
+          }
+        }
+      } catch {
+        // Network retry on next interval
+      }
+    };
+
+    fetchSiteDisplay();
+    const interval = setInterval(fetchSiteDisplay, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [siteId]);
+
+  const availability = siteData || defaultAvailability;
+  const isFacilityFull = siteData ? siteData.isFacilityFull : contextFull;
 
   const isFull =
     queryStateFull ||
@@ -71,9 +129,39 @@ export const KioskDisplay: React.FC = () => {
     };
   };
 
+  if (notFound) {
+    return (
+      <div className="min-h-screen w-full bg-[#111827] text-white flex flex-col justify-center items-center p-6 text-center select-none font-sans">
+        <div className="max-w-md space-y-5 bg-neutral-900/90 p-8 rounded-3xl border border-neutral-800 shadow-2xl">
+          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-500/40 text-danger flex items-center justify-center mx-auto">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-black uppercase tracking-tight text-white">
+              Site Not Found
+            </h1>
+            <p className="text-sm text-neutral-400 leading-relaxed">
+              Parking site <code className="text-red-300 font-mono">"{siteId}"</code> is not recognized or is currently inactive.
+            </p>
+          </div>
+          <div className="pt-2">
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-2 text-xs font-bold text-neutral-300 hover:text-white bg-neutral-800 px-4 py-2 rounded-control border border-neutral-700 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Dashboard</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const carStyle = getNumberStyle(availability.carAvailable, availability.carTotal);
   const scooterStyle = getNumberStyle(availability.scooterAvailable, availability.scooterTotal);
   const totalStyle = getNumberStyle(availability.totalAvailable, availability.totalSlots);
+  const recentPulse = hasRecentUpdate || contextRecentUpdate;
 
   return (
     <div
@@ -84,7 +172,7 @@ export const KioskDisplay: React.FC = () => {
       {/* Subtle Ambient Glow Background */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-[#111827] to-[#0A0E17] pointer-events-none" />
 
-      {/* Floating Kiosk Preview Controls (unobtrusive, top header on hover) */}
+      {/* Floating Kiosk Preview Controls */}
       <header className="relative z-20 w-full p-4 flex items-center justify-between text-neutral-400 opacity-40 hover:opacity-100 transition-opacity">
         <div className="flex items-center gap-3">
           <Link
@@ -122,7 +210,6 @@ export const KioskDisplay: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Toggle Full State Preview */}
           <button
             type="button"
             onClick={toggleFacilityFullSimulation}
@@ -146,10 +233,9 @@ export const KioskDisplay: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content Area: Three-Panel Layout OR Facility Full Banner */}
+      {/* Main Content Area */}
       <main className="relative z-10 flex-1 flex flex-col justify-center px-4 sm:px-8 md:px-12 py-6">
         {isFull ? (
-          /* "Facility Full" State (Entry Denied Condition) per §3.9 */
           <div className="w-full max-w-5xl mx-auto rounded-3xl bg-gradient-to-b from-danger/25 to-danger/10 border-4 border-danger p-8 sm:p-14 text-center space-y-8 animate-pulse-fast shadow-2xl">
             <div className="space-y-4">
               <div className="inline-flex items-center justify-center p-4 rounded-full bg-danger text-white shadow-2xl">
@@ -163,7 +249,6 @@ export const KioskDisplay: React.FC = () => {
               </p>
             </div>
 
-            {/* Category breakdown shown smaller below so visitors know which might free up first per §3.9 */}
             <div className="grid grid-cols-2 gap-4 max-w-lg mx-auto pt-6 border-t border-red-500/30 text-center">
               <div className="bg-neutral-900/80 p-4 rounded-2xl border border-red-500/40">
                 <div className="flex items-center justify-center gap-2 text-neutral-300 font-bold text-sm">
@@ -189,7 +274,6 @@ export const KioskDisplay: React.FC = () => {
             </div>
           </div>
         ) : (
-          /* Three-Panel Horizontal Layout per §3.9 */
           <div
             className={`w-full max-w-7xl mx-auto grid gap-6 md:gap-8 ${
               orientation === 'portrait' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'
@@ -216,7 +300,7 @@ export const KioskDisplay: React.FC = () => {
                   className={`font-sans font-black leading-none block transition-all duration-300 ${
                     carStyle.color
                   } ${carStyle.glow} ${
-                    hasRecentUpdate ? 'scale-105 opacity-90' : 'scale-100 opacity-100'
+                    recentPulse ? 'scale-105 opacity-90' : 'scale-100 opacity-100'
                   } ${
                     carStyle.label === 'FULL'
                       ? 'text-7xl sm:text-8xl md:text-9xl tracking-tight'
@@ -254,7 +338,7 @@ export const KioskDisplay: React.FC = () => {
                   className={`font-sans font-black leading-none block transition-all duration-300 ${
                     scooterStyle.color
                   } ${scooterStyle.glow} ${
-                    hasRecentUpdate ? 'scale-105 opacity-90' : 'scale-100 opacity-100'
+                    recentPulse ? 'scale-105 opacity-90' : 'scale-100 opacity-100'
                   } ${
                     scooterStyle.label === 'FULL'
                       ? 'text-7xl sm:text-8xl md:text-9xl tracking-tight'
@@ -292,7 +376,7 @@ export const KioskDisplay: React.FC = () => {
                   className={`font-sans font-black leading-none block transition-all duration-300 ${
                     totalStyle.color
                   } ${totalStyle.glow} ${
-                    hasRecentUpdate ? 'scale-105 opacity-90' : 'scale-100 opacity-100'
+                    recentPulse ? 'scale-105 opacity-90' : 'scale-100 opacity-100'
                   } ${
                     totalStyle.label === 'FULL'
                       ? 'text-7xl sm:text-8xl md:text-9xl tracking-tight'
@@ -312,17 +396,16 @@ export const KioskDisplay: React.FC = () => {
         )}
       </main>
 
-      {/* Kiosk Footer Indicator Bar per §3.9 */}
+      {/* Kiosk Footer Indicator Bar */}
       <footer className="relative z-10 w-full px-6 py-4 border-t border-neutral-800 bg-[#0D1322] flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-neutral-400">
         <div className="flex items-center gap-2">
           <span className="font-extrabold text-neutral-200 uppercase tracking-wider">
-            AeroPark Facility
+            {siteData ? siteData.siteName : 'ParkIT Facility'}
           </span>
           <span className="text-neutral-600">•</span>
-          <span className="text-xs text-neutral-400">Terminal 2 Billboard Display</span>
+          <span className="text-xs text-neutral-400">Public Billboard Display</span>
         </div>
 
-        {/* Live Pulsing Indicator + Updated Xs ago per §3.9 */}
         <div className="flex items-center gap-2.5 bg-neutral-900/90 px-4 py-1.5 rounded-pill border border-neutral-700/80 shadow-inner">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />

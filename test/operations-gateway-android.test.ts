@@ -17,6 +17,8 @@ import { validateTimestampBounds, vehiclePlateSchema, paginationSchema } from '.
 import prisma from '../src/lib/prisma';
 import { SessionStatus, SlotStatus, VehicleType } from '@prisma/client';
 
+import { signAccessToken } from '../src/middleware/auth';
+
 let server: http.Server;
 let baseUrl = '';
 
@@ -33,16 +35,64 @@ function assert(description: string, condition: boolean, detail?: string) {
   }
 }
 
-// Generate JWT tokens for testing
+// Generate JWT tokens using the official signAccessToken helper
 const JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_key_that_is_at_least_32_characters_long_12345';
 process.env.JWT_SECRET = JWT_SECRET;
 
 function generateToken(payload: { id: string; username: string; role: string; locationId: string | null }): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+  return signAccessToken({
+    id: payload.id,
+    username: payload.username,
+    role: payload.role,
+    locationId: payload.locationId,
+    tokenVersion: 1,
+  });
 }
 
 async function runSuite() {
   console.log('\n🚀 Starting Part B Operations & Gateway Security Test Suite...\n');
+
+  // Set up mock handlers for database-offline testing
+  const origUserFindUnique = prisma.adminUser.findUnique;
+  (prisma.adminUser as any).findUnique = async (args: any) => {
+    try {
+      const res = await origUserFindUnique.call(prisma.adminUser, args);
+      if (res) return res;
+    } catch (_) {}
+    if (args?.where?.id === 'op-001' || args?.where?.username === 'test.operator') {
+      return {
+        id: 'op-001',
+        username: 'test.operator',
+        role: 'operator',
+        status: 'Active',
+        locationId: 'loc-001',
+        tokenVersion: 1,
+        mustChangePassword: false,
+      };
+    }
+    if (args?.where?.id === 'admin-001' || args?.where?.username === 'test.admin') {
+      return {
+        id: 'admin-001',
+        username: 'test.admin',
+        role: 'admin',
+        status: 'Active',
+        locationId: null,
+        tokenVersion: 1,
+        mustChangePassword: false,
+      };
+    }
+    return null;
+  };
+
+  const origAuditCreate = (prisma as any).securityAuditLog?.create;
+  if ((prisma as any).securityAuditLog) {
+    (prisma as any).securityAuditLog.create = async (args: any) => {
+      try {
+        if (origAuditCreate) return await origAuditCreate.call((prisma as any).securityAuditLog, args);
+      } catch (_) {}
+      return { id: 'audit-001', ...args.data };
+    };
+  }
 
   // Start ephemeral server
   await new Promise<void>((resolve) => {

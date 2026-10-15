@@ -64,6 +64,9 @@ app.use((req, _res, next) => {
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+app.get('/api/v1/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // ── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRouter);

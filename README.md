@@ -1,4 +1,4 @@
-# Smart Parking Management System
+# ParkIT — Parking Management System
 
 [![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
@@ -7,19 +7,19 @@
 [![React](https://img.shields.io/badge/React-18+-61DAFB.svg)](https://react.dev/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF.svg)](https://kotlinlang.org/)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)](https://developer.android.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
-A full-stack smart parking facility management platform consisting of three integrated components:
+A modern parking facility management platform built for municipal and commercial parking lots:
 
 | Component | Description |
 |---|---|
-| **Backend API** | Express + TypeScript REST API with JWT authentication and PostgreSQL via Prisma |
-| **Admin Dashboard** | React + Vite web application for facility administrators |
-| **Operator App** | Native Android (Jetpack Compose) application for gate operators — offline-first |
+| **Backend API** | Express + TypeScript REST API with security hardening, audit logs, and PostgreSQL via Prisma |
+| **Admin Dashboard** | React + Vite web application for facility administrators (Slot live view, site editing, operator management, session history, reports) |
+| **Operator App** | Native Android (Jetpack Compose) handheld app for gate staff — offline-first with room local cache |
 
 ---
 
-## Table of Contents
-
+- [Quick Start (Docker)](#quick-start-docker)
 - [System Architecture](#system-architecture)
 - [Repository Structure](#repository-structure)
 - [Backend API](#backend-api)
@@ -37,6 +37,36 @@ A full-stack smart parking facility management platform consisting of three inte
   - [Getting Started (Android)](#getting-started-android)
 - [Available Scripts](#available-scripts)
 - [License](#license)
+
+---
+
+## Quick Start (Docker)
+
+The fastest and most reliable way to run the entire ParkIT system (PostgreSQL 16, Node.js API, React Web Dashboard):
+
+### 1. Start All Containers
+```bash
+# Windows
+start.bat
+
+# Or directly with Docker Compose
+docker compose up -d
+```
+
+### 2. Access the Application
+* **Admin Dashboard:** [http://localhost:5173](http://localhost:5173)
+* **Backend API Health:** [http://localhost:5173/api/v1/health](http://localhost:5173/api/v1/health) (or port 3000)
+* **Operator Android APK:** [http://localhost:5173/download/operator-app.apk](http://localhost:5173/download/operator-app.apk)
+
+### 3. Default Credentials
+| Role | Username | Default Password | Environment Variable |
+|---|---|---|---|
+| **Admin** | `admin` | `change_me_admin_password` | `ADMIN_PASSWORD` |
+| **Operator** | `operator` | `change_me_operator_password` | `OPERATOR_PASSWORD` |
+
+> [!NOTE]
+> All credentials and configurations can be customized via `.env` without touching any source code.
+> The database automatically migrates and seeds 1 facility (`ParkIT – Camp`), 45 parking slots (30 Car, 15 Scooter), 1 Admin, and 1 Operator on initial startup.
 
 ---
 
@@ -149,14 +179,23 @@ flowchart LR
 
 All routes are prefixed with `/api/v1`. Protected routes require `Authorization: Bearer <token>`.
 
-#### Authentication
+#### Authentication & Security
+
+All calls to `POST /api/v1/auth/login` require the header:
+* `X-Client-Type: admin-web` for Administrative web logins
+* `X-Client-Type: operator-android` for Mobile handheld attendants
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/auth/login` | — | Login and receive JWT |
-| `GET` | `/auth/me` | ✅ | Get current user profile |
-| `PUT` | `/auth/me` | ✅ | Update profile (name, email) |
-| `PUT` | `/auth/change-password` | ✅ | Change password (accepts camelCase & snake_case) |
+| `POST` | `/auth/login` | — | Login with lockout protection (5 fails/15m) and role segregation |
+| `POST` | `/auth/logout` | ✅ | Revoke session tokens immediately (bumps `tokenVersion`) |
+| `POST` | `/auth/mfa/setup` | ✅ Admin | Generate TOTP secret and backup recovery codes |
+| `POST` | `/auth/mfa/verify` | ✅ Admin | Verify initial TOTP 6-digit code and activate MFA |
+| `POST` | `/auth/mfa/login` | — | Complete MFA challenge with TOTP code or recovery code |
+| `POST` | `/auth/mfa/disable`| ✅ Admin | Disable TOTP MFA with password confirmation |
+| `GET` | `/auth/me` | ✅ | Get fresh database user profile and site assignment |
+| `PUT` | `/auth/profile` | ✅ | Update profile (role/site mass-assignment protected) |
+| `POST` | `/auth/change-password` | ✅ | Change password (enforces password complexity) |
 
 #### Locations & Availability
 
@@ -202,7 +241,21 @@ erDiagram
         varchar password_hash
         admin_role role
         varchar display_name
+        int token_version
+        boolean must_change_password
+        boolean mfa_enabled
         timestamptz created_at
+    }
+
+    security_audit_logs {
+        uuid id PK
+        varchar event_type
+        varchar severity
+        uuid actor_id FK
+        varchar resource
+        varchar action
+        varchar status
+        timestamptz timestamp
     }
 
     locations {
@@ -243,6 +296,9 @@ erDiagram
         timestamptz in_time
         timestamptz out_time
         session_status status
+        varchar void_reason
+        uuid voided_by FK
+        timestamptz voided_at
     }
 
     bills {
@@ -259,6 +315,7 @@ erDiagram
     parking_sessions ||--o| bills : "billed by"
     locations ||--o{ slots : "contains"
     admin_users ||--o{ parking_sessions : "operated by"
+    admin_users ||--o{ security_audit_logs : "audits"
 ```
 
 #### Custom PostgreSQL Constraints
@@ -311,6 +368,8 @@ npm run dev        # Starts on http://localhost:3000
 | `npm run db:reset` | Drop DB, re-migrate, re-seed |
 | `npm run test:smoke` | Run DB constraint verification suite |
 | `npm run test:api` | Run API integration tests |
+| `npx ts-node test/auth-identity-audit.test.ts` | Run authentication, lockout, token revocation & MFA tests |
+| `npx ts-node test/authorization-matrix.test.ts` | Run 4-actor authorization matrix & route allowlist audit |
 
 ---
 

@@ -4,6 +4,10 @@ import { useLiveData } from '../../context/LiveDataContext';
 import { useToast } from '../../context/ToastContext';
 
 export const DevControlBar: React.FC = () => {
+  if (!Boolean((import.meta as any)?.env?.DEV)) {
+    return null;
+  }
+
   const [isExpanded, setIsExpanded] = useState(false);
   const {
     simulationActive,

@@ -13,12 +13,18 @@ export interface PDFExportOptions {
 }
 
 export const exportToCSV = (filename: string, headers: string[], rows: (string | number)[][]): void => {
-  const headerLine = headers.map((h) => '"' + h.replace(/"/g, '""') + '"').join(',');
+  const sanitizeCell = (val: string | number): string => {
+    let s = String(val !== null && val !== undefined ? val : '');
+    // Prevent CSV formula injection in spreadsheet applications
+    if (/^[=+\-@]/.test(s)) {
+      s = "'" + s;
+    }
+    return '"' + s.replace(/"/g, '""') + '"';
+  };
+
+  const headerLine = headers.map(sanitizeCell).join(',');
   const rowLines = rows.map((row) =>
-    row.map((val) => {
-      const s = String(val !== null && val !== undefined ? val : '');
-      return '"' + s.replace(/"/g, '""') + '"';
-    }).join(',')
+    row.map(sanitizeCell).join(',')
   );
 
   const csvContent = [headerLine, ...rowLines].join('\r\n');
@@ -47,7 +53,7 @@ export const exportToPDF = (options: PDFExportOptions): void => {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('AeroPark Smart Parking Management', 40, 32);
+  doc.text('ParkIT Parking Management System', 40, 32);
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');

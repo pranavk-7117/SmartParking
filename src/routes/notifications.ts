@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
-import { AppError } from '../middleware/errorHandler';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
 
@@ -12,16 +11,14 @@ export const notificationsRouter = Router();
  */
 notificationsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
-    const operator = await prisma.adminUser.findUnique({
-      where: { id: req.operator!.id },
-      select: { locationId: true },
-    });
+    const user = req.user!;
+    const locationId = user.locationId;
 
     const notifications = await prisma.notification.findMany({
       where: {
         OR: [
           { locationId: null },
-          ...(operator?.locationId ? [{ locationId: operator.locationId }] : []),
+          ...(locationId ? [{ locationId }] : []),
         ],
       },
       orderBy: { createdAt: 'desc' },
@@ -48,24 +45,25 @@ const createNotificationSchema = z.object({
   title: z.string().min(1, 'Title is required').max(100),
   message: z.string().min(1, 'Message is required').max(500),
   priority: z.enum(['INFO', 'WARNING', 'URGENT']).default('INFO'),
-  sender: z.string().default('Facility Admin'),
   locationId: z.string().uuid().optional().nullable(),
 });
 
 /**
  * POST /api/v1/notifications
- * Admin posts an announcement or alert to operators
+ * Admin posts an announcement or alert to operators (Admin Only).
+ * Sender is strictly derived from authenticated user identity.
  */
-notificationsRouter.post('/', requireAuth, async (req, res, next) => {
+notificationsRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const body = createNotificationSchema.parse(req.body);
+    const sender = req.user?.username ?? 'Admin';
 
     const notification = await prisma.notification.create({
       data: {
         title: body.title,
         message: body.message,
         priority: body.priority,
-        sender: body.sender,
+        sender,
         locationId: body.locationId || null,
       },
     });
@@ -78,12 +76,21 @@ notificationsRouter.post('/', requireAuth, async (req, res, next) => {
 
 /**
  * DELETE /api/v1/notifications/:id
- * Dismiss or delete a notification
+ * Dismiss or delete a notification (Admin Only).
  */
-notificationsRouter.delete('/:id', requireAuth, async (req, res, next) => {
+notificationsRouter.delete('/:id', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const { id } = req.params;
-    await prisma.notification.delete({ where: { id } });
+    const id = req.params.id as string;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (!isUuid) {
+      res.status(404).json({ error: 'Notification not found' });
+      return;
+    }
+    try {
+      await prisma.notification.delete({ where: { id } });
+    } catch {
+      // Record already deleted or does not exist
+    }
     res.json({ message: 'Notification dismissed' });
   } catch (err) {
     next(err);

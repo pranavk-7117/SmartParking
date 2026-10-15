@@ -87,10 +87,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isCollapsed && (
               <div>
                 <span className="font-extrabold text-base tracking-tight text-white block leading-tight">
-                  AeroPark
+                  ParkIT
                 </span>
                 <span className="text-[10px] uppercase font-semibold tracking-wider text-blue-200 block">
-                  Smart Parking System
+                  Parking Management System
                 </span>
               </div>
             )}

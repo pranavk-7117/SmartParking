@@ -20,8 +20,8 @@ export const Settings: React.FC = () => {
   const { showToast } = useToast();
   const { sites, addSite } = useLiveData();
 
-  const [facilityName, setFacilityName] = useState('AeroPark Smart Facility');
-  const [terminalCode, setTerminalCode] = useState('Terminal 2 - International');
+  const [facilityName, setFacilityName] = useState('ParkIT Facility');
+  const [terminalCode, setTerminalCode] = useState('');
   const [gracePeriod, setGracePeriod] = useState('15');
   const [receiptWidth, setReceiptWidth] = useState('80mm');
   const [isSaving, setIsSaving] = useState(false);
@@ -32,7 +32,7 @@ export const Settings: React.FC = () => {
   const [newSiteAddress, setNewSiteAddress] = useState('');
   const [newCarSlots, setNewCarSlots] = useState('40');
   const [newScooterSlots, setNewScooterSlots] = useState('20');
-  const [newGateInfo, setNewGateInfo] = useState('Gate 1 & Gate 2 (ANPR)');
+  const [newGateInfo, setNewGateInfo] = useState('Main Entrance Gate');
   const [newCarRate, setNewCarRate] = useState('30');
   const [newScooterRate, setNewScooterRate] = useState('15');
   const [newSiteStatus, setNewSiteStatus] = useState<'Active' | 'Coming Soon'>('Active');
@@ -164,7 +164,7 @@ export const Settings: React.FC = () => {
               required
             />
             <Input
-              label="Terminal Identifier"
+              label="Location Identifier"
               value={terminalCode}
               onChange={(e) => setTerminalCode(e.target.value)}
               required
@@ -233,7 +233,7 @@ export const Settings: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
             <div className="p-3 rounded-control border border-neutral-200 bg-neutral-50 flex items-center justify-between">
               <div>
-                <p className="font-bold text-neutral-900">Gate 1 ANPR Camera</p>
+                <p className="font-bold text-neutral-900">Gate 1 Camera</p>
                 <p className="text-neutral-500 text-[11px]">IP: 192.168.1.101</p>
               </div>
               <span className="flex items-center gap-1 text-success font-semibold">
@@ -287,7 +287,7 @@ export const Settings: React.FC = () => {
         <form onSubmit={handleCreateSite} className="space-y-4">
           <Input
             label="Site Name"
-            placeholder="e.g. AeroPark – Viman Nagar"
+            placeholder="e.g. ParkIT – East Wing"
             value={newSiteName}
             onChange={(e) => setNewSiteName(e.target.value)}
             required
@@ -319,8 +319,8 @@ export const Settings: React.FC = () => {
           </div>
 
           <Input
-            label="Gate / Terminal Descriptor"
-            placeholder="e.g. Terminal 1 · Gates 3 & 4"
+            label="Gate / Entrance Descriptor"
+            placeholder="e.g. Main Entrance Gate"
             value={newGateInfo}
             onChange={(e) => setNewGateInfo(e.target.value)}
             required

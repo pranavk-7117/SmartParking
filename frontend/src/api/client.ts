@@ -1,7 +1,8 @@
 /**
  * Centralised API client for the Smart Parking Admin Dashboard.
- * Injects JWT from localStorage on every request, handles 401 by clearing
- * the stored token, and throws structured errors on non-2xx responses.
+ * Injects JWT from localStorage and X-Client-Type: admin-web on every request,
+ * handles 401 by clearing stored tokens, captures X-Total-Count header,
+ * and throws structured errors on non-2xx responses.
  */
 
 const BASE = '/api/v1';
@@ -32,9 +33,16 @@ export function saveUser(user: unknown): void {
   localStorage.setItem('sp_user', JSON.stringify(user));
 }
 
-interface ApiError extends Error {
+export interface ApiError extends Error {
   status: number;
-  body: unknown;
+  code?: string;
+  retryAfter?: number;
+  body: any;
+}
+
+export interface PaginatedResult<T> {
+  data: T;
+  totalCount: number;
 }
 
 async function request<T>(
@@ -44,6 +52,7 @@ async function request<T>(
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Client-Type': 'admin-web',
     ...(options.headers as Record<string, string>),
   };
   if (token) {
@@ -54,16 +63,20 @@ async function request<T>(
 
   if (res.status === 401) {
     clearToken();
-    window.location.href = '/';
+    if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
+      window.location.href = '/';
+    }
   }
 
   if (!res.ok) {
-    let body: unknown;
+    let body: any;
     try { body = await res.json(); } catch { body = null; }
-    const err = new Error(
-      (body as { message?: string })?.message ?? `HTTP ${res.status}`
-    ) as ApiError;
+
+    const message = body?.error || body?.message || `HTTP ${res.status}`;
+    const err = new Error(message) as ApiError;
     err.status = res.status;
+    err.code = body?.code;
+    err.retryAfter = body?.retryAfter ?? (res.headers.get('Retry-After') ? parseInt(res.headers.get('Retry-After')!, 10) : undefined);
     err.body = body;
     throw err;
   }
@@ -73,8 +86,55 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+async function requestWithMeta<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<PaginatedResult<T>> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Client-Type': 'admin-web',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    clearToken();
+    if (window.location.pathname !== '/' && window.location.pathname !== '/login') {
+      window.location.href = '/';
+    }
+  }
+
+  if (!res.ok) {
+    let body: any;
+    try { body = await res.json(); } catch { body = null; }
+
+    const message = body?.error || body?.message || `HTTP ${res.status}`;
+    const err = new Error(message) as ApiError;
+    err.status = res.status;
+    err.code = body?.code;
+    err.retryAfter = body?.retryAfter ?? (res.headers.get('Retry-After') ? parseInt(res.headers.get('Retry-After')!, 10) : undefined);
+    err.body = body;
+    throw err;
+  }
+
+  const countHeader = res.headers.get('X-Total-Count');
+  const totalCount = countHeader ? parseInt(countHeader, 10) : 0;
+  const data = (await res.json()) as T;
+
+  return {
+    data,
+    totalCount: isNaN(totalCount) ? (Array.isArray(data) ? data.length : 0) : totalCount,
+  };
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
+  getPaginated: <T>(path: string) => requestWithMeta<T>(path, { method: 'GET' }),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   patch: <T>(path: string, body: unknown) =>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -10,10 +10,15 @@ import {
   BarChart3,
   CheckCircle2,
   Shield,
+  Edit3,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
+import { useToast } from '../context/ToastContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
+import { Button } from '../components/common/Button';
+import { Input, Select } from '../components/common/Input';
+import { Modal } from '../components/common/Modal';
 import { Table, Column } from '../components/common/Table';
 import { LineChart } from '../components/charts/SimpleCharts';
 import { EmptyState } from '../components/common/EmptyState';
@@ -22,9 +27,18 @@ import { OperatorAccount } from '../types';
 export const SiteDetails: React.FC = () => {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
-  const { sites, operators, allSlots, rates } = useLiveData();
+  const { sites, operators, allSlots, rates, updateSite } = useLiveData();
+  const { showToast } = useToast();
 
   const site = sites.find((s) => s.id === siteId);
+
+  // Edit Site modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editGateInfo, setEditGateInfo] = useState('');
+  const [editStatus, setEditStatus] = useState<'Active' | 'Coming Soon'>('Active');
+  const [isSaving, setIsSaving] = useState(false);
 
   if (!site) {
     return (
@@ -143,6 +157,20 @@ export const SiteDetails: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+            onClick={() => {
+              setEditName(site.name);
+              setEditAddress(site.address);
+              setEditGateInfo(site.gateInfo || '');
+              setEditStatus(site.status as 'Active' | 'Coming Soon');
+              setIsEditModalOpen(true);
+            }}
+          >
+            Edit Site Details
+          </Button>
           <span
             className={`px-3 py-1 rounded-pill text-xs font-bold ${
               site.status === 'Active'
@@ -266,6 +294,85 @@ export const SiteDetails: React.FC = () => {
           onEmptyAction={() => navigate('/operators')}
         />
       </div>
+
+      {/* Edit Site Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Site Details"
+        description={`Update operational details for ${site.name}`}
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editName.trim() || !editAddress.trim()) {
+              showToast('Site Name and Address are required', 'error');
+              return;
+            }
+            setIsSaving(true);
+            try {
+              await updateSite(site.id, {
+                name: editName.trim(),
+                address: editAddress.trim(),
+                gateInfo: editGateInfo.trim() || 'Main Entrance Gate',
+                status: editStatus,
+              });
+              showToast('Site details updated successfully.', 'success');
+              setIsEditModalOpen(false);
+            } catch {
+              showToast('Failed to update site details.', 'error');
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+          className="space-y-4"
+        >
+          <Input
+            label="Site Name"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            required
+          />
+          <Input
+            label="Physical Address"
+            value={editAddress}
+            onChange={(e) => setEditAddress(e.target.value)}
+            required
+          />
+          <Input
+            label="Gate / Entrance Descriptor"
+            value={editGateInfo}
+            onChange={(e) => setEditGateInfo(e.target.value)}
+            placeholder="e.g. Main Entrance Gate"
+          />
+          <Select
+            label="Operational Status"
+            value={editStatus}
+            onChange={(e) => setEditStatus(e.target.value as 'Active' | 'Coming Soon')}
+            options={[
+              { value: 'Active', label: 'Active — Live Operations' },
+              { value: 'Coming Soon', label: 'Coming Soon — Planned' },
+            ]}
+          />
+          <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsEditModalOpen(false)}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={isSaving}
+            >
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

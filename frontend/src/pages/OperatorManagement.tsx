@@ -242,7 +242,7 @@ export const OperatorManagement: React.FC = () => {
             Operator Management
           </h1>
           <p className="text-xs text-neutral-500 mt-0.5">
-            Cross-site staff roster, Google identity verifications, and site assignment governance
+            Staff roster and site assignment management
           </p>
         </div>
 

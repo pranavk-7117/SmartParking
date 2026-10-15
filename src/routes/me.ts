@@ -8,12 +8,12 @@ export const meRouter = Router();
 /**
  * GET /api/v1/me/assignment
  * Returns the operator's assigned location for today.
- * Location is encoded in the JWT's `locationId` claim.
  */
 meRouter.get('/assignment', requireAuth, async (req, res, next) => {
   try {
+    const userId = req.user!.id;
     const operator = await prisma.adminUser.findUnique({
-      where: { id: req.operator!.id },
+      where: { id: userId },
       include: { location: true },
     });
 
@@ -37,15 +37,13 @@ meRouter.get('/assignment', requireAuth, async (req, res, next) => {
 /**
  * GET /api/v1/me/today-summary
  * Real live daily metrics for today (entries, exits, currently parked, revenue)
+ * Scoped strictly to caller's assigned site.
  */
 meRouter.get('/today-summary', requireAuth, async (req, res, next) => {
   try {
-    const operator = await prisma.adminUser.findUnique({
-      where: { id: req.operator!.id },
-      select: { locationId: true },
-    });
+    const user = req.user!;
+    const locationId = user.locationId;
 
-    const locationId = operator?.locationId;
     if (!locationId) {
       return res.json({
         entries: 0,
@@ -106,4 +104,3 @@ meRouter.get('/today-summary', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
-

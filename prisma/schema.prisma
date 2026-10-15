@@ -25,6 +25,7 @@ enum SlotStatus {
 enum SessionStatus {
   ACTIVE
   COMPLETED
+  VOIDED
 
   @@map("session_status")
 }
@@ -145,6 +146,9 @@ model ParkingSession {
   inTime    DateTime      @map("in_time") @db.Timestamptz()
   outTime   DateTime?     @map("out_time") @db.Timestamptz()
   status    SessionStatus @default(ACTIVE) @map("status")
+  voidReason String?      @map("void_reason") @db.VarChar(255)
+  voidedAt  DateTime?     @map("voided_at") @db.Timestamptz()
+  voidedBy  String?       @map("voided_by") @db.VarChar(100)
   createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz()
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
@@ -184,6 +188,11 @@ model AdminUser {
   shiftTime              String?   @map("shift_time") @db.VarChar(50)
   notes                  String?   @map("notes") @db.VarChar(255)
   locationId             String?   @map("location_id") @db.Uuid
+  tokenVersion           Int       @default(1) @map("token_version")
+  mustChangePassword     Boolean   @default(false) @map("must_change_password")
+  mfaSecret              String?   @map("mfa_secret") @db.VarChar(255)
+  mfaEnabled             Boolean   @default(false) @map("mfa_enabled")
+  mfaRecoveryCodes       String[]  @default([]) @map("mfa_recovery_codes")
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
   location      Location?              @relation(fields: [locationId], references: [id])
@@ -220,5 +229,43 @@ model Notification {
   location Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model SecurityAuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  timestamp     DateTime @default(now()) @map("timestamp") @db.Timestamptz()
+  eventType     String   @map("event_type") @db.VarChar(50)
+  severity      String   @map("severity") @db.VarChar(20)
+  actorId       String?  @map("actor_id") @db.VarChar(100)
+  actorUsername String?  @map("actor_username") @db.VarChar(50)
+  actorRole     String?  @map("actor_role") @db.VarChar(50)
+  ipAddress     String?  @map("ip_address") @db.VarChar(50)
+  userAgent     String?  @map("user_agent") @db.VarChar(255)
+  locationId    String?  @map("location_id") @db.Uuid
+  resource      String?  @map("resource") @db.VarChar(100)
+  targetType    String?  @map("target_type") @db.VarChar(50)
+  targetId      String?  @map("target_id") @db.VarChar(100)
+  action        String   @map("action") @db.VarChar(50)
+  status        String   @map("status") @db.VarChar(20)
+  details       Json?    @map("details")
+
+  @@index([eventType])
+  @@index([actorId])
+  @@index([actorUsername])
+  @@index([locationId])
+  @@index([timestamp])
+  @@map("security_audit_logs")
+}
+
+model LoginAttempt {
+  id          String   @id @default(uuid()) @db.Uuid
+  username    String   @map("username") @db.VarChar(50)
+  ipAddress   String   @map("ip_address") @db.VarChar(50)
+  attemptedAt DateTime @default(now()) @map("attempted_at") @db.Timestamptz()
+  successful  Boolean  @default(false) @map("successful")
+
+  @@index([username, ipAddress, attemptedAt])
+  @@index([attemptedAt])
+  @@map("login_attempts")
 }
 
