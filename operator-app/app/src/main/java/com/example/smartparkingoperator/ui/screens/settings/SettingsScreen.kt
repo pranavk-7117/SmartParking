@@ -466,7 +466,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Your password is encrypted and stored securely. Choose a strong password with at least 6 characters.",
+                                    text = "Your password is encrypted and stored securely. Choose a strong password with at least 8 characters, including uppercase, digit, and special character.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = PrimaryAccent
                                 )
@@ -523,8 +523,20 @@ fun SettingsScreen(
                                         errorMessage = "Please enter your current password"
                                         return@AppPrimaryButton
                                     }
-                                    if (newPassword.length < 6) {
-                                        errorMessage = "New password must be at least 6 characters"
+                                    if (newPassword.length < 8) {
+                                        errorMessage = "New password must be at least 8 characters"
+                                        return@AppPrimaryButton
+                                    }
+                                    if (!newPassword.any { it.isUpperCase() }) {
+                                        errorMessage = "New password must contain at least one uppercase letter"
+                                        return@AppPrimaryButton
+                                    }
+                                    if (!newPassword.any { it.isDigit() }) {
+                                        errorMessage = "New password must contain at least one digit"
+                                        return@AppPrimaryButton
+                                    }
+                                    if (!newPassword.any { !it.isLetterOrDigit() }) {
+                                        errorMessage = "New password must contain at least one special character"
                                         return@AppPrimaryButton
                                     }
                                     if (newPassword != confirmPassword) {

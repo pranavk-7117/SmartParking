@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 export function errorHandler(
   err: unknown,
@@ -8,6 +9,8 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+
   // ── Zod validation error → 400 Bad Request ────────────────────────────────
   if (err instanceof ZodError) {
     res.status(400).json({
@@ -39,9 +42,22 @@ export function errorHandler(
   }
 
   // ── Fallback: 500 Internal Server Error ───────────────────────────────────
-  const message = err instanceof Error ? err.message : 'Internal server error';
-  console.error('[error]', err);
-  res.status(500).json({ error: message });
+  const incidentId = randomUUID();
+
+  // Always log the full error server-side with the incident ID for traceability
+  console.error(`[error][${incidentId}]`, err);
+
+  if (isProduction) {
+    // In production: mask stack traces and internal details from the client
+    res.status(500).json({
+      error: 'An unexpected internal error occurred',
+      incidentId,
+    });
+  } else {
+    // In development: include the message for easier debugging
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    res.status(500).json({ error: message, incidentId });
+  }
 }
 
 /** Lightweight typed error class for explicit HTTP status codes. */

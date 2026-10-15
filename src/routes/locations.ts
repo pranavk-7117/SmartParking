@@ -9,16 +9,26 @@ export const locationsRouter = Router();
 /**
  * GET /api/v1/locations/:id/availability
  * Returns live slot availability counts for a specific location.
+ * Operators are scoped to their assigned location.
  */
 locationsRouter.get('/:id/availability', requireAuth, async (req, res, next) => {
   try {
     const id = req.params.id as string;
 
+    // Operators may only query availability for their own assigned location
+    if (req.operator!.role === 'operator') {
+      const operatorLocationId = req.operator!.locationId;
+      if (!operatorLocationId) {
+        throw new AppError('Operator has no assigned location', 403);
+      }
+      if (id !== operatorLocationId) {
+        throw new AppError('You do not have access to this location', 403);
+      }
+    }
+
     // Verify location exists
     const location = await prisma.location.findUnique({ where: { id } });
-    if (!location) {
-      throw new AppError('Location not found', 404);
-    }
+    if (!location) throw new AppError('Location not found', 404);
 
     // Aggregate slot counts by type and status for this location
     const slots = await prisma.slot.groupBy({
@@ -34,14 +44,14 @@ locationsRouter.get('/:id/availability', requireAuth, async (req, res, next) => 
       countMap[row.slotType][row.status] = row._count._all;
     }
 
-    const carVacant    = countMap[VehicleType.CAR]?.[SlotStatus.VACANT]    ?? 0;
-    const carOccupied  = countMap[VehicleType.CAR]?.[SlotStatus.OCCUPIED]  ?? 0;
-    const scooterVacant   = countMap[VehicleType.SCOOTER]?.[SlotStatus.VACANT]   ?? 0;
+    const carVacant      = countMap[VehicleType.CAR]?.[SlotStatus.VACANT]     ?? 0;
+    const carOccupied    = countMap[VehicleType.CAR]?.[SlotStatus.OCCUPIED]   ?? 0;
+    const scooterVacant  = countMap[VehicleType.SCOOTER]?.[SlotStatus.VACANT]    ?? 0;
     const scooterOccupied = countMap[VehicleType.SCOOTER]?.[SlotStatus.OCCUPIED] ?? 0;
 
-    const carTotal = (carVacant + carOccupied) || location.totalCarSlots || 0;
+    const carTotal     = (carVacant + carOccupied)       || location.totalCarSlots    || 0;
     const scooterTotal = (scooterVacant + scooterOccupied) || location.totalScooterSlots || 0;
-    const totalSlots = carTotal + scooterTotal;
+    const totalSlots   = carTotal + scooterTotal;
 
     res.json({
       location_id:      id,

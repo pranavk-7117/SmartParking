@@ -40,8 +40,13 @@ interface ApiService {
     @GET("/api/v1/sessions")
     suspend fun getActiveSessions(
         @Query("status") status: String = "ACTIVE",
-        @Query("location_id") locationId: String
+        @Query("location_id") locationId: String,
+        @Query("limit") limit: Int = 200,
+        @Query("offset") offset: Int = 0
     ): Response<List<ActiveSessionDto>>
+
+    @POST("/api/v1/auth/logout")
+    suspend fun logout(): Response<GenericMessageDto>
 
     @GET("/api/v1/rates")
     suspend fun getRates(

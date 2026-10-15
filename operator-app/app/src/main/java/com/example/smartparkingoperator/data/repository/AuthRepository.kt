@@ -10,6 +10,7 @@ import com.example.smartparkingoperator.data.security.SecureSessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class AuthRepository(
     private val apiService: ApiService,
@@ -38,18 +39,40 @@ class AuthRepository(
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
                 sessionManager.saveSession(
-                    token = body.accessToken,
-                    operatorId = body.operatorId,
-                    operatorUsername = body.username,
-                    role = body.role
+                    token = body.effectiveToken,
+                    operatorId = body.effectiveOperatorId,
+                    operatorUsername = body.effectiveUsername,
+                    role = body.effectiveRole,
+                    mustChangePassword = body.effectiveMustChangePassword
                 )
                 // Opportunistically populate local cache with clean location state
                 parkingRepository.clearLocalLocationCache()
                 parkingRepository.refreshLocationAndRates()
                 Result.success(true)
             } else {
-                val err = response.errorBody()?.string() ?: "Invalid username or password"
-                Result.failure(Exception(err))
+                val code = response.code()
+                val rawErr = response.errorBody()?.string()
+
+                if (code == 401) {
+                    // Wipe any existing session on 401
+                    sessionManager.clearSession()
+                }
+
+                val userMessage = when (code) {
+                    401 -> parseErrorMessage(rawErr, "Invalid username or password")
+                    403 -> parseErrorMessage(rawErr, "Access forbidden for this account type")
+                    429 -> {
+                        val retrySecs = parseRetryAfter(rawErr)
+                        if (retrySecs != null) {
+                            "Too many failed login attempts. Locked out for $retrySecs seconds."
+                        } else {
+                            "Too many login attempts. Please try again later."
+                        }
+                    }
+                    else -> parseErrorMessage(rawErr, "Login failed ($code)")
+                }
+
+                Result.failure(Exception(userMessage))
             }
         } catch (e: Exception) {
             // If network call failed (e.g. server down or timeout), check cached session fallback
@@ -64,7 +87,14 @@ class AuthRepository(
     suspend fun getProfile(): OperatorProfileDto? = withContext(Dispatchers.IO) {
         try {
             val response = apiService.getProfile()
-            if (response.isSuccessful) response.body() else null
+            if (response.isSuccessful) {
+                response.body()
+            } else {
+                if (response.code() == 401) {
+                    handleSessionExpired()
+                }
+                null
+            }
         } catch (e: Exception) {
             null
         }
@@ -95,6 +125,9 @@ class AuthRepository(
                 response.body()!!.username?.let { sessionManager.saveOperatorUsername(it) }
                 Result.success(response.body()!!)
             } else {
+                if (response.code() == 401) {
+                    handleSessionExpired()
+                }
                 val rawErr = response.errorBody()?.string()
                 val err = parseErrorMessage(rawErr, "Failed to update profile")
                 Result.failure(Exception(err))
@@ -109,8 +142,12 @@ class AuthRepository(
             val request = ChangePasswordRequest(currentPassword = currentPassword, newPassword = newPassword)
             val response = apiService.changePassword(request)
             if (response.isSuccessful) {
+                sessionManager.setMustChangePassword(false)
                 Result.success(Unit)
             } else {
+                if (response.code() == 401) {
+                    handleSessionExpired()
+                }
                 val rawErr = response.errorBody()?.string()
                 val err = parseErrorMessage(rawErr, "Failed to change password")
                 Result.failure(Exception(err))
@@ -120,10 +157,29 @@ class AuthRepository(
         }
     }
 
+    private fun handleSessionExpired() {
+        sessionManager.clearSession()
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                parkingRepository.clearLocalLocationCache()
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun parseRetryAfter(rawError: String?): Int? {
+        if (rawError.isNullOrBlank()) return null
+        return try {
+            val json = JSONObject(rawError)
+            if (json.has("retryAfter")) json.getInt("retryAfter") else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun parseErrorMessage(rawError: String?, fallback: String): String {
         if (rawError.isNullOrBlank()) return fallback
         return try {
-            val json = org.json.JSONObject(rawError)
+            val json = JSONObject(rawError)
             when {
                 json.has("error") -> {
                     val errVal = json.getString("error")
@@ -159,15 +215,22 @@ class AuthRepository(
 
     fun isLoggedIn(): Boolean = sessionManager.isLoggedIn()
 
+    fun mustChangePassword(): Boolean = sessionManager.mustChangePassword()
+
     fun getOperatorUsername(): String = sessionManager.getOperatorUsername() ?: "Operator"
 
     fun logout() {
-        sessionManager.clearSession()
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             try {
-                parkingRepository.clearLocalLocationCache()
-            } catch (_: Exception) {}
+                apiService.logout()
+            } catch (_: Exception) {
+                // Best-effort remote token revocation
+            } finally {
+                sessionManager.clearSession()
+                try {
+                    parkingRepository.clearLocalLocationCache()
+                } catch (_: Exception) {}
+            }
         }
     }
 }
-

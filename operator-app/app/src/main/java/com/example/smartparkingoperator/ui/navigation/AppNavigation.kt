@@ -48,9 +48,15 @@ fun AppNavigation(
         composable(Destinations.LOGIN) {
             LoginScreen(
                 authRepository = container.authRepository,
-                onLoginSuccess = {
-                    navController.navigate(Destinations.HOME) {
-                        popUpTo(Destinations.LOGIN) { inclusive = true }
+                onLoginSuccess = { mustChange ->
+                    if (mustChange) {
+                        navController.navigate(Destinations.SETTINGS) {
+                            popUpTo(Destinations.LOGIN) { inclusive = true }
+                        }
+                    } else {
+                        navController.navigate(Destinations.HOME) {
+                            popUpTo(Destinations.LOGIN) { inclusive = true }
+                        }
                     }
                 }
             )
