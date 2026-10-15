@@ -46,11 +46,17 @@ The fastest and most reliable way to run the entire ParkIT system (PostgreSQL 16
 
 ### 1. Start All Containers
 ```bash
+# Linux / macOS
+chmod +x start.sh && ./start.sh
+
 # Windows
 start.bat
 
-# Or directly with Docker Compose
-docker compose up -d
+# Standard Docker Compose (Development)
+docker compose up -d --build
+
+# Production Deployment (Hardened, resource-limited, isolated DB)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 ### 2. Access the Application
