@@ -317,6 +317,32 @@ erDiagram
     admin_users ||--o{ parking_sessions : "operated by"
     admin_users ||--o{ security_audit_logs : "audits"
 ```
+## 🔒Security Hardening & Infrastructure Updates 
+
+The project has been successfully updated with comprehensive backend gateway security, API validation, and Android client protections:
+
+### 1. Backend Gateway & API Hardening
+* **Gateway Security:** Implemented `helmet`, explicit CORS allowlist policies, trust proxy configuration, and a 100kb request body size cap.
+* **Tiered Rate Limiting (`src/middleware/rateLimiter.ts`):** 
+  * Global API: 300 requests / 15 min per IP.
+  * Login endpoints: 10 requests / 15 min per username + IP with uniform lockout and timing-invariant responses to prevent user enumeration.
+  * Kiosk display: 120 requests / 1 min per IP.
+  * APK distribution route: 10 requests / 1 hour per IP.
+* **Error Handling & Audit Logging:** Production error responses are sanitized to mask internal details, returning UUID-based `incidentId` trackers while logging full error stacks securely server-side.
+* **Session Management & Soft-Voiding (`src/routes/sessions.ts`):** 
+  * Implemented administrative soft-voiding (`POST /api/v1/sessions/:id/void`) with mandatory audit reasons, slot liberation, and audit logging.
+  * Explicitly deprecated direct session deletion, returning `405 Method Not Allowed` on `DELETE /api/v1/sessions/:id`.
+* **Strict Validation:** Zod schemas enforce timestamp bounds ($\le 5$ min future, $\le 24$ h past), vehicle plate regex, and site-scoped access control across all operations routes.
+
+### 2. Android Operator App Security
+* **Network Security Config:** Enforced system trust anchors and disabled cleartext traffic (`android:usesCleartextTraffic="false"`) and backups (`android:allowBackup="false"`).
+* **API Client Interceptors (`ApiClient.kt`):** Automatically injects the `X-Client-Type: operator-android` header and strips HTTP body logging in release builds (`BuildConfig.DEBUG`).
+* **Build & Obfuscation:** Configured release builds with `isMinifyEnabled = true` and strict ProGuard keep rules for Retrofit, Gson, and CameraX.
+* **Secure Session Handling:** Integrated automatic session revocation and logout handling upon receiving `401 Unauthorized` responses.
+
+### 3. Deployment & Infrastructure
+* **Docker Support:** Added optimized `Dockerfile`, `docker-compose.yml`, and `.dockerignore` for containerized deployments.
+* **Production Documentation:** Added comprehensive deployment runbooks under `docs/security/PRODUCTION_DEPLOYMENT.md` covering Nginx reverse proxy configs, CSP headers, and VPC security groups.
 
 #### Custom PostgreSQL Constraints
 
