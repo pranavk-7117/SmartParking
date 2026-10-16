@@ -33,7 +33,7 @@ const loginSchema = z.object({
 authRouter.post('/login', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const clientType = req.headers['x-client-type'];
-    if (!clientType || (clientType !== 'admin-web' && clientType !== 'operator-android')) {
+    if (clientType && clientType !== 'admin-web' && clientType !== 'operator-android') {
       res.status(400).json({ error: 'Missing or invalid X-Client-Type header' });
       return;
     }
