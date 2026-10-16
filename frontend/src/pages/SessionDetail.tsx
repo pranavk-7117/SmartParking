@@ -22,6 +22,20 @@ import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { EmptyState } from '../components/common/EmptyState';
 
+function formatDisplayDate(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDisplayTime(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
 export const SessionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -86,7 +100,7 @@ export const SessionDetail: React.FC = () => {
           </Link>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-black text-neutral-900 tracking-tight font-mono">
-              {session.id}
+              PK-{session.id.slice(0, 8).toUpperCase()}
             </h1>
             <Badge variant={session.status} size="md" />
           </div>
@@ -100,7 +114,7 @@ export const SessionDetail: React.FC = () => {
               leftIcon={<Ban className="w-4 h-4" />}
               onClick={() => setIsVoidModalOpen(true)}
             >
-              Void Session
+              Delete Session
             </Button>
           )}
           <Button
@@ -146,7 +160,7 @@ export const SessionDetail: React.FC = () => {
             </div>
             <div>
               <div className="text-xs font-bold text-neutral-900">Vehicle Entry Recorded</div>
-              <div className="text-[11px] text-neutral-500 mt-0.5">{session.inTime}</div>
+              <div className="text-[11px] text-neutral-500 mt-0.5">{formatDisplayDate(session.inTime)}, {formatDisplayTime(session.inTime)}</div>
             </div>
           </div>
 
@@ -186,7 +200,7 @@ export const SessionDetail: React.FC = () => {
                 {isVoided
                   ? session.voidedAt ? new Date(session.voidedAt).toLocaleTimeString('en-GB') : 'Voided'
                   : isCompleted
-                  ? session.outTime
+                  ? formatDisplayTime(session.outTime)
                   : 'Running timer'}
               </div>
             </div>
@@ -249,13 +263,15 @@ export const SessionDetail: React.FC = () => {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between items-center py-1 border-b border-neutral-50">
               <span className="text-neutral-500">In-Time Timestamp:</span>
-              <span className="font-medium text-neutral-800">{session.inTime}</span>
+              <span className="font-medium text-neutral-800">
+                {formatDisplayDate(session.inTime)}, {formatDisplayTime(session.inTime)}
+              </span>
             </div>
 
             <div className="flex justify-between items-center py-1 border-b border-neutral-50">
               <span className="text-neutral-500">Out-Time Timestamp:</span>
               <span className="font-medium text-neutral-800">
-                {session.outTime || 'Vehicle Still Inside'}
+                {session.outTime ? `${formatDisplayDate(session.outTime)}, ${formatDisplayTime(session.outTime)}` : 'Vehicle Still Inside'}
               </span>
             </div>
 

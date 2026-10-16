@@ -54,10 +54,10 @@
   body * {
     visibility: hidden;
   }
-  #thermal-receipt, #thermal-receipt * {
+  #official-receipt, #official-receipt * {
     visibility: visible;
   }
-  #thermal-receipt {
+  #official-receipt {
     position: absolute;
     left: 0;
     top: 0;
