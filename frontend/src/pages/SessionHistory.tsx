@@ -24,14 +24,9 @@ function formatDateTime(str?: string | null): string {
   try {
     const d = new Date(str);
     if (isNaN(d.getTime())) return str;
-    return d.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return `${date}, ${time}`;
   } catch {
     return str;
   }
@@ -439,7 +434,114 @@ export const SessionHistory: React.FC = () => {
         )}
       </div>
 
-      {/* Sessions Data Table */}
+      {/* Mobile Card List (visible on small screens, hidden on md+) */}
+      <div className="md:hidden space-y-3">
+        {paginatedSessions.length === 0 ? (
+          <div className="bg-white rounded-card border border-neutral-200 shadow-soft p-8 text-center text-sm text-neutral-500">
+            No sessions match your filters.
+          </div>
+        ) : (
+          paginatedSessions.map((s) => (
+            <div
+              key={s.id}
+              onClick={() => navigate(`/sessions/${s.id}`)}
+              className="bg-white rounded-card border border-neutral-200 shadow-soft p-4 space-y-3 cursor-pointer active:bg-neutral-50"
+            >
+              {/* Top row: vehicle + status */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-7 h-7 rounded flex items-center justify-center shrink-0 ${s.category === 'Car' ? 'bg-blue-50 text-primary' : 'bg-amber-50 text-accent'}`}>
+                    {s.category === 'Car' ? <Car className="w-4 h-4" /> : <Bike className="w-4 h-4" />}
+                  </div>
+                  <span className="font-mono font-bold text-neutral-900 text-base">{s.vehicleNumber}</span>
+                </div>
+                <Badge variant={s.status} />
+              </div>
+
+              {/* Details grid */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                <div>
+                  <span className="text-neutral-400 block">Slot</span>
+                  <span className="font-mono font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded">{s.slotId}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 block">Duration</span>
+                  <span className="font-medium text-neutral-700">
+                    {s.status === 'Voided' ? 'Voided' : s.durationMinutes ? `${Math.floor(s.durationMinutes / 60)}h ${s.durationMinutes % 60}m` : 'Active'}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-neutral-400 block">In-Time</span>
+                  <span className="font-medium text-neutral-700">{formatDateTime(s.inTime)}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-neutral-400 block">Out-Time</span>
+                  <span className="font-medium text-neutral-700">
+                    {s.status === 'Voided' ? '— Voided —' : s.outTime ? formatDateTime(s.outTime) : '— In Session —'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bottom row: amount + actions */}
+              <div className="flex items-center justify-between border-t border-neutral-100 pt-2">
+                <span className="font-bold text-neutral-900">
+                  {s.status === 'Voided' ? '₹0' : s.amount ? `₹${s.amount}` : '—'}
+                </span>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/sessions/${s.id}`)}
+                    className="p-1.5 rounded text-neutral-500 hover:text-primary hover:bg-neutral-100 transition-colors"
+                    title="View Details"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/sessions/${s.id}/receipt`)}
+                    className="p-1.5 rounded text-neutral-500 hover:text-primary hover:bg-neutral-100 transition-colors"
+                    title="Print Receipt"
+                    disabled={s.status === 'Voided'}
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  {s.status !== 'Voided' && (
+                    <button
+                      type="button"
+                      onClick={() => { setSessionToVoid(s); setVoidReason('Accidental double-scan at gate'); }}
+                      className="p-1.5 rounded text-neutral-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="Delete Session"
+                    >
+                      <Ban className="w-4 h-4 text-neutral-400" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+        {/* Mobile pagination */}
+        {processedSessions.length > pageSize && (
+          <div className="flex items-center justify-between text-xs text-neutral-600 pt-1">
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(p => p - 1)}
+              className="px-3 py-1.5 rounded border border-neutral-200 bg-white disabled:opacity-40"
+            >← Prev</button>
+            <span>Page {currentPage} of {Math.ceil(processedSessions.length / pageSize)}</span>
+            <button
+              type="button"
+              disabled={currentPage >= Math.ceil(processedSessions.length / pageSize)}
+              onClick={() => setCurrentPage(p => p + 1)}
+              className="px-3 py-1.5 rounded border border-neutral-200 bg-white disabled:opacity-40"
+            >Next →</button>
+          </div>
+        )}
+      </div>
+
+      {/* Sessions Data Table (hidden on small screens, visible on md+) */}
+      <div className="hidden md:block">
       <Table
         columns={columns}
         data={paginatedSessions}
@@ -463,6 +565,7 @@ export const SessionHistory: React.FC = () => {
           },
         }}
       />
+      </div>
 
       {/* Void Modal with Mandatory Reason */}
       <Modal

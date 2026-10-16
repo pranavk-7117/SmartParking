@@ -179,14 +179,21 @@ export const Dashboard: React.FC = () => {
     {
       key: 'inTime',
       header: 'In-Time',
-      render: (session) => <span className="text-xs text-neutral-500">{session.inTime}</span>,
+      render: (session) => {
+        const d = new Date(session.inTime);
+        const fmt = isNaN(d.getTime()) ? session.inTime : `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+        return <span className="text-xs text-neutral-500">{fmt}</span>;
+      },
     },
     {
       key: 'outTime',
       header: 'Out-Time',
-      render: (session) => (
-        <span className="text-xs text-neutral-500">{session.outTime || '— In Session —'}</span>
-      ),
+      render: (session) => {
+        if (!session.outTime) return <span className="text-xs text-neutral-500">— In Session —</span>;
+        const d = new Date(session.outTime);
+        const fmt = isNaN(d.getTime()) ? session.outTime : `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}, ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+        return <span className="text-xs text-neutral-500">{fmt}</span>;
+      },
     },
     {
       key: 'durationMinutes',
