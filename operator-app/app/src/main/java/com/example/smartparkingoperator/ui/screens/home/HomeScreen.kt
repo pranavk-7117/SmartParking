@@ -68,7 +68,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
+import com.example.smartparkingoperator.data.location.LocationTracker
 import com.example.smartparkingoperator.data.network.ConnectivityObserver
 import com.example.smartparkingoperator.data.remote.dto.NotificationDto
 import com.example.smartparkingoperator.data.remote.dto.TodaySummaryDto
@@ -111,6 +113,8 @@ fun HomeScreen(
     val isOnline by connectivityObserver.observe().collectAsState(initial = connectivityObserver.isConnected())
     val pendingCount by parkingRepository.getPendingActionCount().collectAsState(initial = 0)
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val locationTracker = remember { LocationTracker(context) }
     var isManualRefreshing by remember { mutableStateOf(false) }
 
     // Real backend live metrics & announcements
@@ -136,11 +140,17 @@ fun HomeScreen(
                     onFailure = { /* keep cached */ }
                 )
 
-                // Report operator live location heartbeat for geofencing (Camp / Hadapsar GPS coords)
-                val currentLocCode = location?.code ?: "site-camp"
-                val defaultLat = if (currentLocCode == "site-hadapsar") 18.5089 else 18.5133
-                val defaultLng = if (currentLocCode == "site-hadapsar") 73.9259 else 73.8784
-                parkingRepository.reportLocation(latitude = defaultLat, longitude = defaultLng)
+                // Report operator live location heartbeat with real device GPS coordinates
+                val realGps = locationTracker.getCurrentLocation()
+                if (realGps != null) {
+                    parkingRepository.reportLocation(latitude = realGps.latitude, longitude = realGps.longitude)
+                } else {
+                    // Fallback to location coordinates if GPS is not yet acquired
+                    val currentLocCode = location?.code ?: "site-camp"
+                    val fallbackLat = if (currentLocCode == "site-hadapsar") 18.5089 else if (currentLocCode == "site-kothrud") 18.5074 else 18.5133
+                    val fallbackLng = if (currentLocCode == "site-hadapsar") 73.9259 else if (currentLocCode == "site-kothrud") 73.8077 else 73.8784
+                    parkingRepository.reportLocation(latitude = fallbackLat, longitude = fallbackLng)
+                }
             } catch (_: Exception) {}
             delay(5000)
         }

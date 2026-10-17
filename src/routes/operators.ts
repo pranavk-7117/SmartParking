@@ -419,3 +419,92 @@ operatorsRouter.patch('/:id/terminate', async (req, res, next) => {
     next(err);
   }
 });
+
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * POST /api/v1/operators/:id/location
+ * Admin endpoint to update or simulate an operator's live GPS coordinates.
+ */
+operatorsRouter.post('/:id/location', async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const { latitude, longitude } = req.body;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      throw new AppError('Valid latitude and longitude numbers are required', 400);
+    }
+    const op = await findOperator(id);
+    if (!op) throw new AppError('Operator not found', 404);
+
+    let geofenceStatus = 'INSIDE';
+    let distanceToSiteMeters: number | null = null;
+    const radiusMeters = 500;
+
+    if (op.location) {
+      const loc = op.location;
+      const siteLat = typeof loc.latitude === 'number' ? loc.latitude : 18.5133;
+      const siteLng = typeof loc.longitude === 'number' ? loc.longitude : 73.8784;
+      distanceToSiteMeters = Math.round(calculateDistanceMeters(latitude, longitude, siteLat, siteLng));
+
+      if (distanceToSiteMeters > radiusMeters) {
+        geofenceStatus = 'BREACHED';
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const existingAlert = await prisma.notification.findFirst({
+          where: {
+            title: `Geofence Alert: ${op.name || op.username}`,
+            createdAt: { gte: fiveMinutesAgo },
+          },
+        });
+        if (!existingAlert) {
+          await prisma.notification.create({
+            data: {
+              title: `Geofence Alert: ${op.name || op.username}`,
+              message: `Operator ${op.name || op.username} moved ${distanceToSiteMeters}m away from assigned site "${loc.name}".`,
+              priority: 'WARNING',
+              sender: 'Geofence Guard',
+              locationId: op.locationId,
+            },
+          });
+        }
+      }
+    }
+
+    const updated = await prisma.adminUser.update({
+      where: { id: op.id },
+      data: {
+        lastLatitude: latitude,
+        lastLongitude: longitude,
+        lastLocationUpdate: new Date(),
+        geofenceStatus,
+      },
+      include: {
+        location: true,
+        reassignments: {
+          include: { fromLocation: true, toLocation: true },
+          orderBy: { reassignedAt: 'desc' },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      operator: formatOperator(updated as OperatorWithRelations),
+      distanceToSiteMeters,
+      geofenceStatus,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
