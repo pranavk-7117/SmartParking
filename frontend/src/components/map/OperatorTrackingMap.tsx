@@ -101,6 +101,7 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const hasFittedRef = useRef(false);
+  const prevSelectedSiteIdRef = useRef<string | undefined>(selectedSiteId);
 
   const [mapStyle, setMapStyle] = useState<TileLayerStyle>('google');
   const [activeFilter, setActiveFilter] = useState<'all' | 'inside' | 'breached'>('all');
@@ -442,20 +443,6 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       markersLayer.addLayer(opMarker);
     });
 
-    // Auto-focus handling
-    if (selectedSiteId && selectedSiteId !== 'all') {
-      const activeSite = sitesWithCoords.find((s) => s.id === selectedSiteId);
-      if (activeSite) {
-        mapInstanceRef.current.flyTo([activeSite.lat, activeSite.lng], 15, {
-          duration: 1.0,
-        });
-      }
-    } else if (!hasFittedRef.current && allLatLngs.length > 0) {
-      // Auto-fit all bounds on initial load
-      const bounds = L.latLngBounds(allLatLngs);
-      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-      hasFittedRef.current = true;
-    }
   }, [sitesWithCoords, filteredOperators, selectedSiteId, onSelectSite]);
 
   // Recenter / Fit All Bounds handler
@@ -470,6 +457,39 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
   };
+
+  // Initial one-time fitBounds to encompass all sites & operators nicely
+  useEffect(() => {
+    if (!mapInstanceRef.current || hasFittedRef.current) return;
+    if (sitesWithCoords.length > 0) {
+      const points: [number, number][] = sitesWithCoords.map((s) => [s.lat, s.lng]);
+      operatorsWithDistance.forEach((o) => points.push([o.computedLat, o.computedLng]));
+      if (points.length > 0) {
+        const bounds = L.latLngBounds(points);
+        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        hasFittedRef.current = true;
+      }
+    }
+  }, [sitesWithCoords, operatorsWithDistance]);
+
+  // Handle explicit site selection changes (only moves camera when site selection actually changes)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    // Only move camera if selectedSiteId has ACTUALLY changed from previous value
+    if (prevSelectedSiteIdRef.current === selectedSiteId) return;
+    prevSelectedSiteIdRef.current = selectedSiteId;
+
+    if (selectedSiteId && selectedSiteId !== 'all') {
+      const activeSite = sitesWithCoords.find((s) => s.id === selectedSiteId);
+      if (activeSite) {
+        mapInstanceRef.current.flyTo([activeSite.lat, activeSite.lng], 15, {
+          duration: 1.0,
+        });
+      }
+    } else if (selectedSiteId === 'all') {
+      handleFitAll();
+    }
+  }, [selectedSiteId, sitesWithCoords]);
 
   const handleCopyCoords = () => {
     if (!clickedCoords) return;
