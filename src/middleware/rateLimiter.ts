@@ -19,29 +19,34 @@ const sharedOptions = {
 };
 
 // ── Global limiter ────────────────────────────────────────────────────────────
-// Applied to all API routes.  300 requests per 15-minute window.
+// Applied to all API routes. 5,000 requests per 15-minute window to accommodate live dashboard polling.
 export const globalLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1_000,
-  max: 300,
+  max: 5000,
   message: {
     error: 'Too many requests, please slow down',
-    retryAfter: 900,
+    retryAfter: 60,
   },
-  skip: () => !isProduction, // only enforce in production to keep dev ergonomic
+  skip: (req) => {
+    // Skip rate limiting in development or loopback/local traffic
+    if (!isProduction) return true;
+    const ip = req.ip || req.socket.remoteAddress || '';
+    return ip === '127.0.0.1' || ip === '::1' || ip.includes('172.') || ip.includes('192.168.');
+  },
 });
 
 // ── Login limiter ─────────────────────────────────────────────────────────────
-// Layered on top of the auth route.  10 attempts / 15 min is generous enough
-// for genuine users while blunting credential-stuffing attacks.
+// Layered on top of the auth route. 50 attempts / 15 min to prevent lockouts during active use.
 export const loginLimiter = rateLimit({
   ...sharedOptions,
   windowMs: 15 * 60 * 1_000,
-  max: 10,
+  max: 50,
   message: {
     error: 'Too many login attempts. Please try again later.',
-    retryAfter: 900,
+    retryAfter: 60,
   },
+  skip: () => !isProduction,
 });
 
 // ── Kiosk display limiter ─────────────────────────────────────────────────────

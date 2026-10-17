@@ -53,27 +53,33 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return Math.round(R * c);
 }
 
-// Map tile layers (100% free, zero API key required, zero watermarks)
-type TileLayerStyle = 'streets' | 'satellite' | 'topo' | 'osm';
+// Map tile layers (Google Maps and Esri/OSM - 100% free, reliable, no watermark)
+type TileLayerStyle = 'google' | 'streets' | 'satellite' | 'google_hybrid' | 'osm';
 
 const TILE_LAYERS: Record<TileLayerStyle, { name: string; url: string; attribution: string; maxZoom: number }> = {
+  google: {
+    name: 'Google Maps (Roadmap)',
+    url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+    attribution: '&copy; Google Maps',
+    maxZoom: 20,
+  },
   streets: {
-    name: 'Real Streets (Google style)',
+    name: 'Esri World Street Map',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
     attribution: '&copy; Esri &copy; OpenStreetMap contributors',
     maxZoom: 19,
   },
   satellite: {
-    name: 'Satellite Aerial',
+    name: 'Esri Satellite Imagery',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attribution: '&copy; Esri, Maxar, Earthstar Geographics',
     maxZoom: 19,
   },
-  topo: {
-    name: 'Topographic & Transit',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri, HERE, Garmin, Intermap',
-    maxZoom: 19,
+  google_hybrid: {
+    name: 'Google Maps (Satellite Hybrid)',
+    url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    attribution: '&copy; Google Maps',
+    maxZoom: 20,
   },
   osm: {
     name: 'OpenStreetMap Streets',
@@ -94,8 +100,9 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const hasFittedRef = useRef(false);
 
-  const [mapStyle, setMapStyle] = useState<TileLayerStyle>('streets');
+  const [mapStyle, setMapStyle] = useState<TileLayerStyle>('google');
   const [activeFilter, setActiveFilter] = useState<'all' | 'inside' | 'breached'>('all');
   const [clickedCoords, setClickedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [copiedCoords, setCopiedCoords] = useState(false);
@@ -252,74 +259,73 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       // 500m Geofence Circle
       const circle = L.circle([site.lat, site.lng], {
         radius: site.radiusMeters,
-        color: isSelected ? '#2563eb' : '#3b82f6',
-        weight: isSelected ? 2.5 : 1.5,
-        opacity: 0.85,
+        color: isSelected ? '#1d4ed8' : '#2563eb',
+        weight: isSelected ? 3 : 2,
+        opacity: 0.9,
         fillColor: isSelected ? '#3b82f6' : '#60a5fa',
-        fillOpacity: isSelected ? 0.16 : 0.08,
+        fillOpacity: isSelected ? 0.22 : 0.12,
         dashArray: '6, 6',
       });
 
       circle.bindTooltip(
-        `<div class="text-xs font-semibold px-1 py-0.5">${site.name} • 500m Geofence Boundary</div>`,
+        `<div style="font-weight: 700; font-size: 11px;">${site.name} • 500m Geofence</div>`,
         { permanent: false, direction: 'top', className: 'geofence-tooltip' }
       );
       markersLayer.addLayer(circle);
 
-      // Site Custom HTML Marker Icon
+      // Site Custom HTML Marker Icon (Pure inline styles for 100% reliable rendering)
+      const siteColor = isSelected ? '#1d4ed8' : '#0f172a';
+      const cleanSiteName = site.name.replace('ParkIT – ', '');
+
       const siteHtml = `
-        <div class="relative group cursor-pointer flex flex-col items-center transform -translate-x-1/2 -translate-y-full transition-transform hover:scale-110">
-          <div class="flex items-center gap-1.5 bg-neutral-900/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-lg border ${
-            isSelected ? 'border-primary ring-2 ring-primary/40' : 'border-neutral-700'
-          }">
-            <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-            <span class="truncate max-w-[120px]">${site.name.replace('ParkIT – ', '')}</span>
+        <div style="display: flex; flex-direction: column; align-items: center; width: 140px; cursor: pointer; user-select: none;">
+          <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; box-shadow: 0 4px 8px rgba(0,0,0,0.35); border: 1.5px solid ${isSelected ? '#38bdf8' : '#475569'}; display: flex; align-items: center; gap: 5px; max-width: 135px; white-space: nowrap;">
+            <span style="width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; display: inline-block; flex-shrink: 0;"></span>
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanSiteName}</span>
           </div>
-          <div class="w-8 h-8 rounded-full ${
-            isSelected ? 'bg-primary' : 'bg-neutral-800'
-          } border-2 border-white shadow-xl flex items-center justify-center text-white font-bold text-xs mt-1">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: ${siteColor}; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 900; font-size: 13px; margin-top: 2px;">
             P
           </div>
-          <div class="w-1.5 h-2 bg-neutral-800"></div>
+          <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid ${siteColor};"></div>
         </div>
       `;
 
       const siteIcon = L.divIcon({
         className: 'custom-site-marker',
         html: siteHtml,
-        iconSize: [120, 50],
-        iconAnchor: [60, 50],
-        popupAnchor: [0, -50],
+        iconSize: [140, 62],
+        iconAnchor: [70, 62],
+        popupAnchor: [0, -62],
       });
 
       const siteMarker = L.marker([site.lat, site.lng], { icon: siteIcon });
 
       const sitePopupHtml = `
-        <div class="p-1 min-w-[220px]">
-          <div class="flex items-center gap-2 mb-1.5">
-            <span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
-            <span class="font-bold text-sm text-neutral-900">${site.name}</span>
+        <div style="padding: 4px; min-width: 220px; font-family: inherit;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span style="width: 10px; height: 10px; border-radius: 50%; background: #2563eb; display: inline-block;"></span>
+            <span style="font-weight: 800; font-size: 14px; color: #0f172a;">${site.name}</span>
           </div>
-          <p class="text-xs text-neutral-600 mb-2">${site.address || site.gateInfo}</p>
-          <div class="grid grid-cols-2 gap-1.5 p-2 bg-neutral-50 rounded border border-neutral-100 text-xs mb-2">
+          <p style="font-size: 12px; color: #64748b; margin-bottom: 8px;">${site.address || site.gateInfo}</p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px; margin-bottom: 8px;">
             <div>
-              <span class="text-neutral-400 block text-[10px] uppercase font-semibold">Car Capacity</span>
-              <span class="font-bold text-neutral-800">${site.totalCarSlots} bays</span>
+              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Car Capacity</span>
+              <span style="font-weight: 700; color: #1e293b;">${site.totalCarSlots} bays</span>
             </div>
             <div>
-              <span class="text-neutral-400 block text-[10px] uppercase font-semibold">Scooter Capacity</span>
-              <span class="font-bold text-neutral-800">${site.totalScooterSlots} bays</span>
+              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Scooter Capacity</span>
+              <span style="font-weight: 700; color: #1e293b;">${site.totalScooterSlots} bays</span>
             </div>
             <div>
-              <span class="text-neutral-400 block text-[10px] uppercase font-semibold">Geofence</span>
-              <span class="font-bold text-primary">500m active</span>
+              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Geofence</span>
+              <span style="font-weight: 700; color: #2563eb;">500m radius</span>
             </div>
             <div>
-              <span class="text-neutral-400 block text-[10px] uppercase font-semibold">Status</span>
-              <span class="font-bold text-emerald-600">${site.status}</span>
+              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Status</span>
+              <span style="font-weight: 700; color: #16a34a;">${site.status}</span>
             </div>
           </div>
-          <div class="text-[11px] text-neutral-500 font-mono">
+          <div style="font-size: 11px; color: #64748b; font-family: monospace;">
             GPS: ${site.lat.toFixed(4)}°N, ${site.lng.toFixed(4)}°E
           </div>
         </div>
@@ -345,16 +351,16 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
             [op.assignedSite.lat, op.assignedSite.lng],
           ],
           {
-            color: op.isBreached ? '#ef4444' : '#10b981',
-            weight: 2,
-            opacity: op.isBreached ? 0.9 : 0.6,
+            color: op.isBreached ? '#dc2626' : '#16a34a',
+            weight: op.isBreached ? 2.5 : 2,
+            opacity: op.isBreached ? 0.9 : 0.7,
             dashArray: op.isBreached ? '4, 4' : '6, 6',
           }
         );
         markersLayer.addLayer(polyline);
       }
 
-      // Operator Custom HTML Marker
+      // Operator Custom HTML Marker (Pure inline styles for reliability)
       const isBreached = op.isBreached;
       const initials = (op.name || op.username || 'OP')
         .split(' ')
@@ -363,26 +369,16 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
         .join('')
         .toUpperCase();
 
+      const opBg = isBreached ? '#dc2626' : '#16a34a';
+      const opRing = isBreached ? 'rgba(220, 38, 38, 0.35)' : 'rgba(22, 163, 74, 0.3)';
+
       const operatorHtml = `
-        <div class="relative group cursor-pointer flex flex-col items-center transform -translate-x-1/2 -translate-y-1/2">
-          ${
-            isBreached
-              ? `
-              <div class="absolute -inset-2 bg-rose-500/30 rounded-full animate-ping"></div>
-              <div class="relative flex items-center justify-center w-10 h-10 rounded-full bg-rose-600 border-2 border-white shadow-xl text-white font-bold text-xs ring-4 ring-rose-500/20">
-                ${initials}
-                <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-white text-rose-600 rounded-full flex items-center justify-center text-[9px] font-extrabold shadow">!</span>
-              </div>
-            `
-              : `
-              <div class="absolute -inset-1.5 bg-emerald-500/30 rounded-full animate-pulse"></div>
-              <div class="relative flex items-center justify-center w-9 h-9 rounded-full bg-emerald-600 border-2 border-white shadow-xl text-white font-bold text-xs ring-4 ring-emerald-500/20">
-                ${initials}
-                <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border border-white rounded-full"></span>
-              </div>
-            `
-          }
-          <div class="mt-1 bg-neutral-900/90 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-md whitespace-nowrap border border-neutral-700">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 100px; cursor: pointer; user-select: none;">
+          <div style="position: relative; width: 36px; height: 36px; border-radius: 50%; background: ${opBg}; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 12px; outline: 3px solid ${opRing};">
+            ${initials}
+            <span style="position: absolute; bottom: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: ${isBreached ? '#f87171' : '#4ade80'}; border: 1.5px solid #ffffff;"></span>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); white-space: nowrap; margin-top: 2px; max-width: 95px; overflow: hidden; text-overflow: ellipsis;">
             ${op.name}
           </div>
         </div>
@@ -391,53 +387,53 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       const opIcon = L.divIcon({
         className: 'custom-operator-marker',
         html: operatorHtml,
-        iconSize: [60, 60],
-        iconAnchor: [30, 30],
-        popupAnchor: [0, -25],
+        iconSize: [100, 56],
+        iconAnchor: [50, 18],
+        popupAnchor: [0, -20],
       });
 
       const opMarker = L.marker([op.computedLat, op.computedLng], { icon: opIcon });
 
       const opPopupHtml = `
-        <div class="p-1 min-w-[220px]">
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <span class="font-bold text-sm text-neutral-900">${op.name}</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${
-              isBreached
-                ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-            }">
-              ${isBreached ? 'GEOFENCE BREACHED' : 'INSIDE GEOFENCE'}
+        <div style="padding: 4px; min-width: 220px; font-family: inherit;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+            <span style="font-weight: 800; font-size: 14px; color: #0f172a;">${op.name}</span>
+            <span style="font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 9999px; background: ${
+              isBreached ? '#fee2e2' : '#dcfce7'
+            }; color: ${isBreached ? '#b91c1c' : '#15803d'}; border: 1px solid ${
+              isBreached ? '#fecaca' : '#bbf7d0'
+            };">
+              ${isBreached ? 'BREACHED (>500m)' : 'INSIDE GEOFENCE'}
             </span>
           </div>
 
-          <div class="space-y-1.5 text-xs text-neutral-600 mb-2">
-            <div class="flex items-center justify-between">
-              <span class="text-neutral-400">Assigned Facility:</span>
-              <span class="font-semibold text-neutral-800">${op.assignedSite?.name || 'Unassigned'}</span>
+          <div style="font-size: 12px; color: #475569; margin-bottom: 8px; line-height: 1.6;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #94a3b8;">Facility:</span>
+              <span style="font-weight: 600; color: #1e293b;">${op.assignedSite?.name || 'Unassigned'}</span>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-neutral-400">Distance from Center:</span>
-              <span class="font-mono font-bold ${isBreached ? 'text-rose-600' : 'text-emerald-600'}">
-                ${op.distanceMeters}m ${isBreached ? '(> 500m limit)' : '(within limit)'}
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #94a3b8;">Distance from Site:</span>
+              <span style="font-family: monospace; font-weight: 700; color: ${isBreached ? '#dc2626' : '#16a34a'};">
+                ${op.distanceMeters}m ${isBreached ? '(Outside 500m)' : '(Within radius)'}
               </span>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-neutral-400">Shift / Hours:</span>
-              <span class="font-medium text-neutral-800">${op.shiftTime || 'General'}</span>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #94a3b8;">Shift:</span>
+              <span style="font-weight: 500; color: #1e293b;">${op.shiftTime || 'General'}</span>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-neutral-400">Contact:</span>
-              <span class="font-mono font-medium text-neutral-800">${op.contact || 'N/A'}</span>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #94a3b8;">Contact:</span>
+              <span style="font-family: monospace; color: #1e293b;">${op.contact || 'N/A'}</span>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-neutral-400">GPS Ping:</span>
-              <span class="text-neutral-500 text-[11px]">${op.lastLocationUpdate ? new Date(op.lastLocationUpdate).toLocaleTimeString() : 'Live'}</span>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #94a3b8;">GPS Ping:</span>
+              <span style="color: #64748b; font-size: 11px;">${op.lastLocationUpdate ? new Date(op.lastLocationUpdate).toLocaleTimeString() : 'Live'}</span>
             </div>
           </div>
 
-          <div class="text-[11px] font-mono text-neutral-400 bg-neutral-50 p-1.5 rounded border border-neutral-100">
-            Coordinates: ${op.computedLat.toFixed(5)}, ${op.computedLng.toFixed(5)}
+          <div style="font-size: 11px; font-family: monospace; color: #64748b; background: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
+            GPS: ${op.computedLat.toFixed(5)}, ${op.computedLng.toFixed(5)}
           </div>
         </div>
       `;
@@ -446,14 +442,19 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       markersLayer.addLayer(opMarker);
     });
 
-    // If a site is selected, focus on it
+    // Auto-focus handling
     if (selectedSiteId && selectedSiteId !== 'all') {
       const activeSite = sitesWithCoords.find((s) => s.id === selectedSiteId);
       if (activeSite) {
         mapInstanceRef.current.flyTo([activeSite.lat, activeSite.lng], 15, {
-          duration: 1.2,
+          duration: 1.0,
         });
       }
+    } else if (!hasFittedRef.current && allLatLngs.length > 0) {
+      // Auto-fit all bounds on initial load
+      const bounds = L.latLngBounds(allLatLngs);
+      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+      hasFittedRef.current = true;
     }
   }, [sitesWithCoords, filteredOperators, selectedSiteId, onSelectSite]);
 

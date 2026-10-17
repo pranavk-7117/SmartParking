@@ -24,6 +24,7 @@ import {
 } from '../types';
 import { api } from '../api/client';
 import { useAuth } from './AuthContext';
+import { initialSites, initialOperators } from '../data/mockData';
 
 // ─── API response shapes ─────────────────────────────────────────────────────
 
@@ -306,7 +307,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   const isKioskRoute = location.pathname.startsWith('/display');
 
   const [isLoading, setIsLoading] = useState(true);
-  const [sites, setSites] = useState<Site[]>([]);
+  const [sites, setSites] = useState<Site[]>(initialSites);
   const [currentSiteId, setCurrentSiteIdState] = useState<string>(() => {
     return localStorage.getItem('sp_selected_site') || 'site-camp';
   });
@@ -321,7 +322,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [allRates, setAllRates] = useState<RateItem[]>([]);
   const [allRateHistory, setAllRateHistory] = useState<RateHistoryItem[]>([]);
   const [deactivationEvents, setDeactivationEvents] = useState<DeactivationEvent[]>([]);
-  const [operators, setOperators] = useState<OperatorAccount[]>([]);
+  const [operators, setOperators] = useState<OperatorAccount[]>(initialOperators);
   const [alerts, setAlerts] = useState<QuickAlert[]>([]);
   const [hasRecentUpdate, setHasRecentUpdate] = useState(false);
   const [isFacilityFull] = useState(false);
