@@ -16,6 +16,8 @@ export interface Site {
   defaultCarRate: number;
   defaultScooterRate: number;
   status: 'Active' | 'Coming Soon';
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface AvailabilityData {

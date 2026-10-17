@@ -10,7 +10,9 @@ export const initialSites: Site[] = [
     "totalScooterSlots": 20,
     "defaultCarRate": 30,
     "defaultScooterRate": 15,
-    "status": "Active"
+    "status": "Active",
+    "latitude": 18.5089,
+    "longitude": 73.9259
   },
   {
     "id": "site-camp",
@@ -21,7 +23,9 @@ export const initialSites: Site[] = [
     "totalScooterSlots": 15,
     "defaultCarRate": 40,
     "defaultScooterRate": 20,
-    "status": "Active"
+    "status": "Active",
+    "latitude": 18.5133,
+    "longitude": 73.8784
   },
   {
     "id": "site-kothrud",
@@ -32,7 +36,9 @@ export const initialSites: Site[] = [
     "totalScooterSlots": 25,
     "defaultCarRate": 30,
     "defaultScooterRate": 15,
-    "status": "Coming Soon"
+    "status": "Coming Soon",
+    "latitude": 18.5074,
+    "longitude": 73.8077
   }
 ];
 

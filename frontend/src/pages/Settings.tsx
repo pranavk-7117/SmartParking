@@ -47,6 +47,8 @@ export const Settings: React.FC = () => {
   const [newCarRate, setNewCarRate] = useState('30');
   const [newScooterRate, setNewScooterRate] = useState('15');
   const [newSiteStatus, setNewSiteStatus] = useState<'Active' | 'Coming Soon'>('Active');
+  const [newSiteLat, setNewSiteLat] = useState('');
+  const [newSiteLng, setNewSiteLng] = useState('');
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +98,9 @@ export const Settings: React.FC = () => {
       return;
     }
 
+    const lat = newSiteLat.trim() ? parseFloat(newSiteLat) : undefined;
+    const lng = newSiteLng.trim() ? parseFloat(newSiteLng) : undefined;
+
     addSite({
       name: newSiteName.trim(),
       address: newSiteAddress.trim(),
@@ -105,12 +110,16 @@ export const Settings: React.FC = () => {
       defaultCarRate: parseInt(newCarRate, 10) || 30,
       defaultScooterRate: parseInt(newScooterRate, 10) || 15,
       status: newSiteStatus,
+      latitude: lat,
+      longitude: lng,
     })
       .then(() => {
         showToast(`Site "${newSiteName}" added successfully. Now selectable in Site Switcher!`, 'success');
         setIsAddSiteModalOpen(false);
         setNewSiteName('');
         setNewSiteAddress('');
+        setNewSiteLat('');
+        setNewSiteLng('');
       })
       .catch(() => {
         showToast('Failed to add site. Please try again.', 'error');
@@ -437,6 +446,33 @@ export const Settings: React.FC = () => {
               onChange={(e) => setNewScooterRate(e.target.value)}
               required
             />
+          </div>
+
+          <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                Geographic Map Coordinates (Optional)
+              </span>
+              <span className="text-[10px] text-neutral-400">Tip: Click on Live Map to inspect</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Latitude (°N)"
+                placeholder="e.g. 18.5204"
+                value={newSiteLat}
+                onChange={(e) => setNewSiteLat(e.target.value)}
+              />
+              <Input
+                label="Longitude (°E)"
+                placeholder="e.g. 73.8567"
+                value={newSiteLng}
+                onChange={(e) => setNewSiteLng(e.target.value)}
+              />
+            </div>
+            <p className="text-[11px] text-neutral-500">
+              Leave blank to automatically calculate and place in Pune on the live tracking map.
+            </p>
           </div>
 
           <Select

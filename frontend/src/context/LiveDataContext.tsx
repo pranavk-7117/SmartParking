@@ -38,6 +38,8 @@ interface ApiSite {
   defaultScooterRate: number;
   status: string;
   code: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 interface ApiSlot {
@@ -135,6 +137,8 @@ function mapSite(a: ApiSite): Site {
     defaultCarRate: a.defaultCarRate,
     defaultScooterRate: a.defaultScooterRate,
     status: a.status === 'Active' ? 'Active' : 'Coming Soon',
+    latitude: typeof a.latitude === 'number' ? a.latitude : undefined,
+    longitude: typeof a.longitude === 'number' ? a.longitude : undefined,
   };
 }
 

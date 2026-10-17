@@ -155,8 +155,14 @@ meRouter.post('/location', requireAuth, async (req, res, next) => {
     let siteCoords: { lat: number; lng: number; radiusMeters: number } | null = null;
 
     if (operator.location) {
-      const siteCode = operator.location.code;
-      siteCoords = SITE_COORDINATES[siteCode] || { lat: 18.5204, lng: 73.8567, radiusMeters: 500 };
+      const loc = operator.location;
+      const lat = (typeof loc.latitude === 'number' && !isNaN(loc.latitude))
+        ? loc.latitude
+        : (SITE_COORDINATES[loc.code]?.lat ?? 18.5204);
+      const lng = (typeof loc.longitude === 'number' && !isNaN(loc.longitude))
+        ? loc.longitude
+        : (SITE_COORDINATES[loc.code]?.lng ?? 73.8567);
+      siteCoords = { lat, lng, radiusMeters: 500 };
       distanceToSiteMeters = Math.round(
         calculateDistanceMeters(latitude, longitude, siteCoords.lat, siteCoords.lng)
       );

@@ -49,6 +49,8 @@ model Location {
   defaultCarRate     Decimal?    @map("default_car_rate") @db.Decimal(8, 2)
   defaultScooterRate Decimal?    @map("default_scooter_rate") @db.Decimal(8, 2)
   status             String      @default("Active") @map("status") @db.VarChar(50)
+  latitude           Float?      @map("latitude")
+  longitude          Float?      @map("longitude")
   createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz()
 
   slots                 Slot[]

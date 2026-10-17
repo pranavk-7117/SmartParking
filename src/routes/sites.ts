@@ -18,6 +18,8 @@ const createSiteSchema = z.object({
   defaultCarRate:     z.number().min(0).default(30),
   defaultScooterRate: z.number().min(0).default(15),
   status:             z.enum(['Active', 'Coming Soon']).default('Active'),
+  latitude:           z.number().optional(),
+  longitude:          z.number().optional(),
 });
 
 const updateSiteSchema = createSiteSchema.partial();
@@ -62,6 +64,8 @@ sitesRouter.get('/', requireAuth, async (req, res, next) => {
         defaultCarRate:    carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30,
         defaultScooterRate: scooterRate ? parseFloat(scooterRate.toString()) : loc.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 15,
         status: loc.status,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
       };
     });
 
@@ -117,6 +121,8 @@ sitesRouter.get('/:id', requireAuth, async (req, res, next) => {
       defaultCarRate:    carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30,
       defaultScooterRate: scooterRate ? parseFloat(scooterRate.toString()) : loc.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 15,
       status: loc.status,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
       operators: loc.operators,
       slotsCount: {
         total:       loc.slots.length,
@@ -156,6 +162,8 @@ sitesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
         defaultCarRate:     data.defaultCarRate,
         defaultScooterRate: data.defaultScooterRate,
         status:             data.status,
+        latitude:           data.latitude,
+        longitude:          data.longitude,
         rates: {
           create: [
             { vehicleType: VehicleType.CAR,     ratePerHour: data.defaultCarRate,     effectiveFrom: new Date(), lastUpdatedBy: req.operator!.username },
@@ -194,6 +202,8 @@ sitesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
       defaultCarRate:    data.defaultCarRate,
       defaultScooterRate: data.defaultScooterRate,
       status:            location.status,
+      latitude:          location.latitude,
+      longitude:         location.longitude,
     });
   } catch (err) {
     next(err);
