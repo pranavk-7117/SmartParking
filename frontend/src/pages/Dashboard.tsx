@@ -412,6 +412,14 @@ export const Dashboard: React.FC = () => {
         </Card>
       </div>
 
+      {/* Live Map: Parking Sites & Live Operator Geofence Tracking */}
+      <OperatorTrackingMap
+        sites={sites}
+        operators={operators}
+        selectedSiteId={currentSiteId === 'all' ? undefined : currentSiteId}
+        onSelectSite={(id) => setCurrentSiteId(id)}
+      />
+
       {/* Row 3: When in COMBINED Mode, show the Per-Location Comparison Grid & Chart */}
       {currentSiteId === 'all' && (
         <div className="space-y-4">
@@ -527,14 +535,6 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
       )}
-
-      {/* Live Map: Parking Sites & Live Operator Geofence Tracking */}
-      <OperatorTrackingMap
-        sites={sites}
-        operators={operators}
-        selectedSiteId={currentSiteId === 'all' ? undefined : currentSiteId}
-        onSelectSite={(id) => setCurrentSiteId(id)}
-      />
 
       {/* Row 4: Recent Transactions Table */}
       <div className="space-y-3">
