@@ -81,5 +81,10 @@ interface ApiService {
 
     @GET("/api/v1/notifications")
     suspend fun getNotifications(): Response<List<com.example.smartparkingoperator.data.remote.dto.NotificationDto>>
+
+    @POST("/api/v1/me/location")
+    suspend fun updateLocation(
+        @Body request: com.example.smartparkingoperator.data.remote.dto.LocationUpdateRequest
+    ): Response<com.example.smartparkingoperator.data.remote.dto.LocationUpdateResponse>
 }
 

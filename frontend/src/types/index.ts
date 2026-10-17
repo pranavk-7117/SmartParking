@@ -132,6 +132,10 @@ export interface OperatorAccount {
   dateAdded: string;
   authMethod: 'Google Account Linked' | 'Password' | string;
   sessionsProcessedCount: number;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocationUpdate?: string | null;
+  geofenceStatus?: 'INSIDE' | 'BREACHED' | string;
   reassignmentHistory: SiteReassignmentEvent[];
 }
 

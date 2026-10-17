@@ -188,6 +188,10 @@ model AdminUser {
   shiftTime              String?   @map("shift_time") @db.VarChar(50)
   notes                  String?   @map("notes") @db.VarChar(255)
   locationId             String?   @map("location_id") @db.Uuid
+  lastLatitude           Float?    @map("last_latitude")
+  lastLongitude          Float?    @map("last_longitude")
+  lastLocationUpdate     DateTime? @map("last_location_update") @db.Timestamptz()
+  geofenceStatus         String?   @default("INSIDE") @map("geofence_status") @db.VarChar(20)
   tokenVersion           Int       @default(1) @map("token_version")
   mustChangePassword     Boolean   @default(false) @map("must_change_password")
   mfaSecret              String?   @map("mfa_secret") @db.VarChar(255)

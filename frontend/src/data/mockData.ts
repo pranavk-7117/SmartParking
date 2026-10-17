@@ -142,6 +142,10 @@ export const initialOperators: OperatorAccount[] = [
     "dateAdded": "15-Jan-2026",
     "authMethod": "Google Account Linked",
     "sessionsProcessedCount": 1420,
+    "lastLatitude": 18.5085,
+    "lastLongitude": 73.9255,
+    "lastLocationUpdate": "Just now",
+    "geofenceStatus": "INSIDE",
     "reassignmentHistory": [
       {
         "id": "rh-1",
@@ -166,6 +170,10 @@ export const initialOperators: OperatorAccount[] = [
     "dateAdded": "01-Feb-2026",
     "authMethod": "Google Account Linked",
     "sessionsProcessedCount": 980,
+    "lastLatitude": 18.5145,
+    "lastLongitude": 73.9312,
+    "lastLocationUpdate": "2m ago",
+    "geofenceStatus": "BREACHED",
     "reassignmentHistory": []
   },
   {
@@ -178,6 +186,10 @@ export const initialOperators: OperatorAccount[] = [
     "dateAdded": "10-Mar-2026",
     "authMethod": "Google Account Linked",
     "sessionsProcessedCount": 1150,
+    "lastLatitude": 18.5135,
+    "lastLongitude": 73.8781,
+    "lastLocationUpdate": "Just now",
+    "geofenceStatus": "INSIDE",
     "reassignmentHistory": [
       {
         "id": "rh-2",
@@ -202,6 +214,10 @@ export const initialOperators: OperatorAccount[] = [
     "dateAdded": "05-Dec-2025",
     "authMethod": "Google Account Linked",
     "sessionsProcessedCount": 420,
+    "lastLatitude": null,
+    "lastLongitude": null,
+    "lastLocationUpdate": null,
+    "geofenceStatus": "INSIDE",
     "reassignmentHistory": []
   }
 ];

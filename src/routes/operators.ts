@@ -68,6 +68,10 @@ function formatOperator(op: OperatorWithRelations) {
     }),
     authMethod: op.authMethod,
     sessionsProcessedCount: op.sessionsProcessedCount,
+    lastLatitude: op.lastLatitude,
+    lastLongitude: op.lastLongitude,
+    lastLocationUpdate: op.lastLocationUpdate ? op.lastLocationUpdate.toISOString() : null,
+    geofenceStatus: op.geofenceStatus ?? 'INSIDE',
     reassignmentHistory: op.reassignments.map((r) => ({
       id: r.id,
       operatorId: r.operatorId,

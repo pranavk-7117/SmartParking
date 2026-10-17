@@ -177,4 +177,21 @@ data class NotificationDto(
     @SerializedName("createdAt") val createdAt: String
 )
 
+data class LocationUpdateRequest(
+    @SerializedName("latitude") val latitude: Double,
+    @SerializedName("longitude") val longitude: Double
+)
+
+data class LocationUpdateResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("operatorId") val operatorId: String,
+    @SerializedName("latitude") val latitude: Double,
+    @SerializedName("longitude") val longitude: Double,
+    @SerializedName("geofenceStatus") val geofenceStatus: String,
+    @SerializedName("distanceToSiteMeters") val distanceToSiteMeters: Int?,
+    @SerializedName("allowedRadiusMeters") val allowedRadiusMeters: Int?,
+    @SerializedName("lastLocationUpdate") val lastLocationUpdate: String?
+)
+
+
 

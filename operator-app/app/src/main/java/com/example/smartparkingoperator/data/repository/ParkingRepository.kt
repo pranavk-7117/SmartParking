@@ -447,6 +447,28 @@ class ParkingRepository(
         }
     }
 
+    suspend fun reportLocation(
+        latitude: Double,
+        longitude: Double
+    ): Result<com.example.smartparkingoperator.data.remote.dto.LocationUpdateResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.updateLocation(
+                com.example.smartparkingoperator.data.remote.dto.LocationUpdateRequest(
+                    latitude = latitude,
+                    longitude = longitude
+                )
+            )
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to report location: ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+
 
     companion object {
         fun formatIsoDate(epochMs: Long): String {

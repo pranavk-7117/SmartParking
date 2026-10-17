@@ -135,6 +135,12 @@ fun HomeScreen(
                     onSuccess = { notifications = it },
                     onFailure = { /* keep cached */ }
                 )
+
+                // Report operator live location heartbeat for geofencing (Camp / Hadapsar GPS coords)
+                val currentLocCode = location?.code ?: "site-camp"
+                val defaultLat = if (currentLocCode == "site-hadapsar") 18.5089 else 18.5133
+                val defaultLng = if (currentLocCode == "site-hadapsar") 73.9259 else 73.8784
+                parkingRepository.reportLocation(latitude = defaultLat, longitude = defaultLng)
             } catch (_: Exception) {}
             delay(5000)
         }

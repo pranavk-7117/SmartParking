@@ -105,6 +105,10 @@ interface ApiOperator {
   dateAdded: string;
   authMethod: string;
   sessionsProcessedCount: number;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocationUpdate?: string | null;
+  geofenceStatus?: string;
   reassignmentHistory: {
     id: string;
     operatorId: string;
@@ -218,6 +222,10 @@ function mapOperator(a: ApiOperator): OperatorAccount {
     dateAdded: a.dateAdded,
     authMethod: a.authMethod ?? 'Password',
     sessionsProcessedCount: a.sessionsProcessedCount,
+    lastLatitude: a.lastLatitude,
+    lastLongitude: a.lastLongitude,
+    lastLocationUpdate: a.lastLocationUpdate,
+    geofenceStatus: a.geofenceStatus ?? 'INSIDE',
     reassignmentHistory: (a.reassignmentHistory ?? []).map((r) => ({
       id: r.id,
       operatorId: r.operatorId,

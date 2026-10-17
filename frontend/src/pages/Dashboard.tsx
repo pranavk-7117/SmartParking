@@ -24,6 +24,7 @@ import { Table, Column } from '../components/common/Table';
 import { Sparkline, BarChart } from '../components/charts/SimpleCharts';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { ReceiptModal } from '../components/common/ReceiptModal';
+import { OperatorTrackingMap } from '../components/map/OperatorTrackingMap';
 import { ParkingSession, ReportData } from '../types';
 import { api } from '../api/client';
 
@@ -39,6 +40,7 @@ export const Dashboard: React.FC = () => {
     slots,
     allSessions,
     sessions,
+    operators,
     alerts,
     hasRecentUpdate,
     dismissAlert,
@@ -525,6 +527,14 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Live Map: Parking Sites & Live Operator Geofence Tracking */}
+      <OperatorTrackingMap
+        sites={sites}
+        operators={operators}
+        selectedSiteId={currentSiteId === 'all' ? undefined : currentSiteId}
+        onSelectSite={(id) => setCurrentSiteId(id)}
+      />
 
       {/* Row 4: Recent Transactions Table */}
       <div className="space-y-3">

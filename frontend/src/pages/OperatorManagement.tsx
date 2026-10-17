@@ -182,6 +182,34 @@ export const OperatorManagement: React.FC = () => {
       ),
     },
     {
+      key: 'geofenceStatus',
+      header: 'Live Geofence',
+      align: 'center',
+      render: (op) => {
+        if (op.status === 'Terminated') {
+          return <span className="text-xs text-neutral-400">—</span>;
+        }
+        const isBreached = op.geofenceStatus === 'BREACHED';
+        return (
+          <div className="flex flex-col items-center">
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                isBreached
+                  ? 'bg-rose-100 text-rose-800'
+                  : 'bg-emerald-100 text-emerald-800'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${isBreached ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
+              <span>{isBreached ? 'Breached (>500m)' : 'Inside Site'}</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 mt-0.5">
+              {op.lastLocationUpdate || 'Live'}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
       key: 'dateAdded',
       header: 'Date Added',
       sortable: true,
