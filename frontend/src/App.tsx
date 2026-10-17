@@ -19,6 +19,7 @@ import { OperatorManagement } from './pages/OperatorManagement';
 import { OperatorProfile } from './pages/OperatorProfile';
 import { Settings } from './pages/Settings';
 import { KioskDisplay } from './pages/KioskDisplay';
+import { LiveMap } from './pages/LiveMap';
 
 export const App: React.FC = () => {
   return (
@@ -38,6 +39,7 @@ export const App: React.FC = () => {
               <Route path="/" element={<DashboardLayout />}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="map" element={<LiveMap />} />
                 
                 {/* Site Details (Reached via Header Site Switcher per §3.10) */}
                 <Route path="sites/:siteId" element={<SiteDetails />} />

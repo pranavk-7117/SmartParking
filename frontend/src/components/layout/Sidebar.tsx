@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Car,
+  MapPin,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -36,6 +37,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Dashboard',
       path: '/dashboard',
       icon: LayoutDashboard,
+    },
+    {
+      label: 'Live Map & Radar',
+      path: '/map',
+      icon: MapPin,
     },
     {
       label: 'Slot Management',
