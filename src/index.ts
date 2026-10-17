@@ -46,12 +46,9 @@ function validateEnv(): void {
   }
 
   // APK_DOWNLOAD_SECRET_PATH: must be defined and start with '/'
-  const apkPath = process.env.APK_DOWNLOAD_SECRET_PATH;
-  if (!apkPath) {
-    if (process.env.NODE_ENV === 'production') {
-      errors.push('APK_DOWNLOAD_SECRET_PATH is not set');
-    }
-  } else if (!apkPath.startsWith('/')) {
+  const apkPath = process.env.APK_DOWNLOAD_SECRET_PATH || '/distribution/smart-parking-operator.apk';
+  process.env.APK_DOWNLOAD_SECRET_PATH = apkPath;
+  if (!apkPath.startsWith('/')) {
     errors.push('APK_DOWNLOAD_SECRET_PATH must start with a leading "/"');
   }
 

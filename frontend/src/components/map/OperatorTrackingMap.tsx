@@ -53,33 +53,33 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return Math.round(R * c);
 }
 
-// Map tile layers
-type TileLayerStyle = 'voyager' | 'osm' | 'satellite' | 'dark';
+// Map tile layers (100% free, zero API key required, zero watermarks)
+type TileLayerStyle = 'streets' | 'satellite' | 'topo' | 'osm';
 
 const TILE_LAYERS: Record<TileLayerStyle, { name: string; url: string; attribution: string; maxZoom: number }> = {
-  voyager: {
-    name: 'Detailed City (Google style)',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 20,
-  },
-  osm: {
-    name: 'OpenStreetMap Streets',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  streets: {
+    name: 'Real Streets (Google style)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri &copy; OpenStreetMap contributors',
     maxZoom: 19,
   },
   satellite: {
     name: 'Satellite Aerial',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, Earthstar Geographics',
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics',
     maxZoom: 19,
   },
-  dark: {
-    name: 'Dark Radar',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 20,
+  topo: {
+    name: 'Topographic & Transit',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: '&copy; Esri, HERE, Garmin, Intermap',
+    maxZoom: 19,
+  },
+  osm: {
+    name: 'OpenStreetMap Streets',
+    url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
   },
 };
 
@@ -95,7 +95,7 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
-  const [mapStyle, setMapStyle] = useState<TileLayerStyle>('voyager');
+  const [mapStyle, setMapStyle] = useState<TileLayerStyle>('streets');
   const [activeFilter, setActiveFilter] = useState<'all' | 'inside' | 'breached'>('all');
   const [clickedCoords, setClickedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [copiedCoords, setCopiedCoords] = useState(false);
