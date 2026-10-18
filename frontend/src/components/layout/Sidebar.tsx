@@ -39,11 +39,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: LayoutDashboard,
     },
     {
-      label: 'Live Map & Radar',
-      path: '/map',
-      icon: MapPin,
-    },
-    {
       label: 'Slot Management',
       path: '/slots',
       icon: ParkingSquare,

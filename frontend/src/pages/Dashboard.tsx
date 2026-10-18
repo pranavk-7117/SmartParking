@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Car,
   Bike,
@@ -16,20 +16,25 @@ import {
   Building2,
   ExternalLink,
   Activity,
+  Plus,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
 import { OccupancyCard, StatCard, Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
+import { Button } from '../components/common/Button';
 import { Table, Column } from '../components/common/Table';
 import { Sparkline, BarChart } from '../components/charts/SimpleCharts';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { ReceiptModal } from '../components/common/ReceiptModal';
 import { OperatorTrackingMap } from '../components/map/OperatorTrackingMap';
+import { AddSiteModal } from '../components/modals/AddSiteModal';
 import { ParkingSession, ReportData } from '../types';
 import { api } from '../api/client';
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
   const {
     sites,
     currentSiteId,
@@ -246,55 +251,58 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner / Scope Notification */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-card border border-neutral-200 shadow-xs">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="w-10 h-10 rounded-control bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
-            {currentSiteId === 'all' ? <Layers className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-black text-neutral-900 tracking-tight truncate">
-                {currentSiteId === 'all' ? 'Multi-Site Network Dashboard' : currentSite.name}
-              </h1>
-              {currentSiteId === 'all' ? (
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-primary text-white px-2 py-0.5 rounded-pill shrink-0">
-                  {sites.length} Sites Combined
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-pill border border-neutral-200 shrink-0">
-                  {currentSite.status}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-neutral-500 mt-0.5 truncate">
-              {currentSiteId === 'all'
-                ? `Consolidated live overview of all ${sites.length} parking facilities across the network`
-                : `${currentSite.address || 'Facility'} • Gate: ${currentSite.gateInfo || 'Main Gate'}`}
+      {/* Top Banner / Onboarding Strip */}
+      {sites.length === 0 ? (
+        <div className="p-4 sm:p-5 rounded-card bg-blue-50/80 border border-blue-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-base font-bold text-blue-950 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-primary" />
+              <span>Clean Day-0 System Ready (Zero Mock Data)</span>
+            </h1>
+            <p className="text-xs text-blue-800 mt-1">
+              Add your first physical parking facility to automatically detect GPS coordinates, generate bays, and begin live operations.
             </p>
           </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsAddSiteModalOpen(true)}
+            className="shrink-0 shadow-xs"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Add First Facility
+          </Button>
         </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
+          <div>
+            <h1 className="text-xl font-black text-neutral-900 tracking-tight">
+              {currentSiteId === 'all' ? 'Network Overview' : currentSite.name}
+            </h1>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              {currentSiteId === 'all'
+                ? `${sites.length} Active Parking ${sites.length === 1 ? 'Facility' : 'Facilities'} configured`
+                : currentSite.address || 'Facility Overview'}
+            </p>
+          </div>
 
-        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 pt-2 lg:pt-0 border-t lg:border-t-0 border-neutral-100">
-          {currentSiteId !== 'all' ? (
-            <button
-              type="button"
-              onClick={() => setCurrentSiteId('all')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 transition-colors"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Switch to All Sites Combined</span>
-            </button>
-          ) : (
-            <span className="text-xs font-medium text-neutral-500 bg-neutral-50 px-3 py-1.5 rounded-control border border-neutral-200">
-              Live Network Mode
+          <div className="flex items-center gap-2">
+            {currentSiteId !== 'all' && (
+              <button
+                type="button"
+                onClick={() => setCurrentSiteId('all')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 transition-colors"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>All Facilities</span>
+              </button>
+            )}
+            <span className="text-xs text-neutral-400 font-mono">
+              Synced: {new Date(availability.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
-          )}
-          <span className="text-xs text-neutral-400 font-mono">
-            Updated: {new Date(availability.updatedAt).toLocaleTimeString()}
-          </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Row 1: Bay Availability Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -412,14 +420,6 @@ export const Dashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Live Map: Parking Sites & Live Operator Geofence Tracking */}
-      <OperatorTrackingMap
-        sites={sites}
-        operators={operators}
-        selectedSiteId={currentSiteId === 'all' ? undefined : currentSiteId}
-        onSelectSite={(id) => setCurrentSiteId(id)}
-      />
-
       {/* Row 3: When in COMBINED Mode, show the Per-Location Comparison Grid & Chart */}
       {currentSiteId === 'all' && (
         <div className="space-y-4">
@@ -432,13 +432,42 @@ export const Dashboard: React.FC = () => {
                 Live capacity, occupancy rate, and revenue across individual facilities
               </p>
             </div>
-            <span className="text-xs font-semibold text-neutral-400">
-              {sites.length} Active Facilities
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold text-neutral-400">
+                {sites.length} Active Facilities
+              </span>
+              {sites.length > 0 && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsAddSiteModalOpen(true)}
+                  className="shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Add New Site
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {sitePerformance.map((sp) => (
+          {sitePerformance.length === 0 ? (
+            <Card className="p-8 text-center border-dashed border-2 border-neutral-200">
+              <Building2 className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
+              <p className="text-xs font-semibold text-neutral-600">No parking facilities registered yet.</p>
+              <p className="text-[11px] text-neutral-400 mt-0.5 mb-3">Add your first facility to begin monitoring bay occupancies.</p>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsAddSiteModalOpen(true)}
+                className="shadow-2xs mx-auto"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Add First Facility
+              </Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sitePerformance.map((sp) => (
               <Card
                 key={sp.site.id}
                 className="p-5 hover:border-primary/50 transition-all flex flex-col justify-between"
@@ -511,6 +540,7 @@ export const Dashboard: React.FC = () => {
               </Card>
             ))}
           </div>
+          )}
 
           {/* Visual Bar Chart: Vacant Bays by Location */}
           {siteComparisonChartData.length > 0 && (
@@ -567,6 +597,16 @@ export const Dashboard: React.FC = () => {
           emptyDescription="Vehicle movements will appear here automatically."
         />
       </div>
+
+      {/* Real-Time Operator & Sites Map (Positioned below Recent Transactions and above System Quick Alerts per Requirement 6) */}
+      <OperatorTrackingMap
+        sites={sites}
+        operators={operators}
+        selectedSiteId={currentSiteId === 'all' ? undefined : currentSiteId}
+        focusOperatorId={location.state?.focusOperatorId}
+        onSelectSite={(id) => setCurrentSiteId(id)}
+        onOpenAddSite={() => setIsAddSiteModalOpen(true)}
+      />
 
       {/* Row 5: Quick Alerts Panel */}
       <Card className="p-5 border-neutral-200">
@@ -625,6 +665,12 @@ export const Dashboard: React.FC = () => {
         isOpen={!!selectedReceiptSession}
         onClose={() => setSelectedReceiptSession(null)}
         session={selectedReceiptSession}
+      />
+
+      <AddSiteModal
+        isOpen={isAddSiteModalOpen}
+        onClose={() => setIsAddSiteModalOpen(false)}
+        onSiteCreated={(newId) => setCurrentSiteId(newId)}
       />
     </div>
   );

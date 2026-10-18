@@ -138,6 +138,8 @@ export interface OperatorAccount {
   lastLongitude?: number | null;
   lastLocationUpdate?: string | null;
   geofenceStatus?: 'INSIDE' | 'BREACHED' | string;
+  isOnline?: boolean;
+  connectionStatus?: 'ONLINE' | 'OFFLINE';
   reassignmentHistory: SiteReassignmentEvent[];
 }
 

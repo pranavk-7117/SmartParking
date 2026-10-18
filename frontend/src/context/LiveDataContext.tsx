@@ -24,7 +24,6 @@ import {
 } from '../types';
 import { api } from '../api/client';
 import { useAuth } from './AuthContext';
-import { initialSites, initialOperators } from '../data/mockData';
 
 // ─── API response shapes ─────────────────────────────────────────────────────
 
@@ -112,6 +111,8 @@ interface ApiOperator {
   lastLongitude?: number | null;
   lastLocationUpdate?: string | null;
   geofenceStatus?: string;
+  isOnline?: boolean;
+  connectionStatus?: 'ONLINE' | 'OFFLINE';
   reassignmentHistory: {
     id: string;
     operatorId: string;
@@ -231,6 +232,8 @@ function mapOperator(a: ApiOperator): OperatorAccount {
     lastLongitude: a.lastLongitude,
     lastLocationUpdate: a.lastLocationUpdate,
     geofenceStatus: a.geofenceStatus ?? 'INSIDE',
+    isOnline: a.isOnline,
+    connectionStatus: a.connectionStatus ?? (a.isOnline ? 'ONLINE' : 'OFFLINE'),
     reassignmentHistory: (a.reassignmentHistory ?? []).map((r) => ({
       id: r.id,
       operatorId: r.operatorId,
@@ -277,10 +280,12 @@ interface LiveDataContextType {
   reassignSlotCategory: (slotId: string, newCategory: VehicleCategory) => void;
   addSlot: (slot: Omit<ParkingSlot, 'currentVehicleNumber' | 'currentSessionId'>) => boolean;
   updateRate: (category: VehicleCategory, newRate: number, adminName: string) => void;
-  addOperator: (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => void;
+  addOperator: (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => Promise<OperatorAccount>;
   updateOperator: (operatorId: string, data: Partial<{ name: string; contact: string; email: string; employeeId: string; shiftTime: string; notes: string; password: string }>) => Promise<void>;
   reassignOperatorSite: (operatorId: string, newSiteId: string, reason?: string) => void;
   terminateOperator: (operatorId: string) => void;
+  reactivateOperator: (operatorId: string, siteId: string, reason?: string) => Promise<void>;
+  deleteOperator: (operatorId: string) => Promise<void>;
   voidSession: (sessionId: string, reason: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   dismissAlert: (alertId: string) => void;
@@ -291,8 +296,8 @@ const LiveDataContext = createContext<LiveDataContextType | undefined>(undefined
 
 const FALLBACK_SITE: Site = {
   id: '',
-  name: 'Loading...',
-  address: '',
+  name: 'No Facility Configured',
+  address: 'Add your first parking facility to get started',
   gateInfo: '',
   totalCarSlots: 0,
   totalScooterSlots: 0,
@@ -307,9 +312,9 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   const isKioskRoute = location.pathname.startsWith('/display');
 
   const [isLoading, setIsLoading] = useState(true);
-  const [sites, setSites] = useState<Site[]>(initialSites);
+  const [sites, setSites] = useState<Site[]>([]);
   const [currentSiteId, setCurrentSiteIdState] = useState<string>(() => {
-    return localStorage.getItem('sp_selected_site') || 'site-camp';
+    return localStorage.getItem('sp_selected_site') || 'all';
   });
 
   const setCurrentSiteId = useCallback((id: string) => {
@@ -322,7 +327,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [allRates, setAllRates] = useState<RateItem[]>([]);
   const [allRateHistory, setAllRateHistory] = useState<RateHistoryItem[]>([]);
   const [deactivationEvents, setDeactivationEvents] = useState<DeactivationEvent[]>([]);
-  const [operators, setOperators] = useState<OperatorAccount[]>(initialOperators);
+  const [operators, setOperators] = useState<OperatorAccount[]>([]);
   const [alerts, setAlerts] = useState<QuickAlert[]>([]);
   const [hasRecentUpdate, setHasRecentUpdate] = useState(false);
   const [isFacilityFull] = useState(false);
@@ -358,15 +363,14 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
       setAllRateHistory(rateHistoryRaw.map(mapRateHistory));
       setOperators(operatorsRaw.map(mapOperator));
 
-      // Preserve 'all' view or user-selected site; default to ParkIT Camp if available
+      // Preserve 'all' view or user-selected site; default to first active facility or 'all'
       setCurrentSiteIdState((prev) => {
         if (prev === 'all') return 'all';
         if (prev && mappedSites.some((s) => s.id === prev)) return prev;
         const saved = localStorage.getItem('sp_selected_site');
         if (saved === 'all') return 'all';
         if (saved && mappedSites.some((s) => s.id === saved)) return saved;
-        const camp = mappedSites.find((s) => s.id === 'site-camp');
-        return camp?.id ?? mappedSites[0]?.id ?? '';
+        return mappedSites[0]?.id ?? 'all';
       });
     } catch (err) {
       console.error('[LiveData] Failed to load data:', err);
@@ -646,16 +650,15 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
   );
 
   const addOperator = useCallback(
-    (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => {
-      api
-        .post<ApiOperator>('/operators', operatorData)
-        .then((created) => {
-          setOperators((prev) => [mapOperator(created), ...prev]);
-          triggerFlash();
-        })
-        .catch((err) => console.error('[LiveData] addOperator failed:', err));
+    async (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => {
+      const created = await api.post<ApiOperator>('/operators', operatorData);
+      const mapped = mapOperator(created);
+      setOperators((prev) => [mapped, ...prev]);
+      triggerFlash();
+      await loadAll();
+      return mapped;
     },
-    [triggerFlash]
+    [triggerFlash, loadAll]
   );
 
   const updateOperator = useCallback(
@@ -672,7 +675,7 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
       api
         .post(`/operators/${operatorId}/reassign`, { newSiteId, reason })
         .then(() => {
-          const toSite = sites.find((s) => s.id === newSiteId);
+          const toSite = sites.find((s) => s.id === newSiteId || (s as any).code === newSiteId);
           const nowStr = new Date().toLocaleDateString('en-GB', {
             day: '2-digit',
             month: 'short',
@@ -698,15 +701,20 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
               return {
                 ...op,
                 assignedSiteId: newSiteId,
+                lastLatitude: toSite?.latitude ?? op.lastLatitude,
+                lastLongitude: toSite?.longitude ?? op.lastLongitude,
+                lastLocationUpdate: new Date().toISOString(),
+                geofenceStatus: 'INSIDE',
                 reassignmentHistory: [reassignment, ...op.reassignmentHistory],
               };
             })
           );
           triggerFlash();
+          loadAll();
         })
         .catch((err) => console.error('[LiveData] reassignOperatorSite failed:', err));
     },
-    [sites, triggerFlash]
+    [sites, triggerFlash, loadAll]
   );
 
   const terminateOperator = useCallback(
@@ -720,6 +728,24 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
           triggerFlash();
         })
         .catch((err) => console.error('[LiveData] terminateOperator failed:', err));
+    },
+    [triggerFlash]
+  );
+
+  const reactivateOperator = useCallback(
+    async (operatorId: string, siteId: string, reason?: string) => {
+      await api.post(`/operators/${operatorId}/reactivate`, { siteId, reason });
+      await loadAll();
+      triggerFlash();
+    },
+    [loadAll, triggerFlash]
+  );
+
+  const deleteOperator = useCallback(
+    async (operatorId: string) => {
+      await api.delete(`/operators/${operatorId}`);
+      setOperators((prev) => prev.filter((op) => op.id !== operatorId));
+      triggerFlash();
     },
     [triggerFlash]
   );
@@ -806,6 +832,8 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
         updateOperator,
         reassignOperatorSite,
         terminateOperator,
+        reactivateOperator,
+        deleteOperator,
         voidSession,
         deleteSession,
         dismissAlert,

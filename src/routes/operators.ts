@@ -49,6 +49,15 @@ async function findOperator(idOrUsername: string): Promise<OperatorWithRelations
 }
 
 function formatOperator(op: OperatorWithRelations) {
+  const now = Date.now();
+  const updateTime = op.lastLocationUpdate ? op.lastLocationUpdate.getTime() : 0;
+  const isOnline = Boolean(
+    op.lastLatitude !== null &&
+    op.lastLongitude !== null &&
+    updateTime > 0 &&
+    (now - updateTime) <= 5 * 60 * 1000
+  );
+
   return {
     id: op.id,
     name: op.name ?? op.username,
@@ -71,6 +80,8 @@ function formatOperator(op: OperatorWithRelations) {
     lastLatitude: op.lastLatitude,
     lastLongitude: op.lastLongitude,
     lastLocationUpdate: op.lastLocationUpdate ? op.lastLocationUpdate.toISOString() : null,
+    isOnline,
+    connectionStatus: isOnline ? 'ONLINE' : 'OFFLINE',
     geofenceStatus: op.geofenceStatus ?? 'INSIDE',
     reassignmentHistory: op.reassignments.map((r) => ({
       id: r.id,
@@ -156,8 +167,19 @@ operatorsRouter.post('/', async (req, res, next) => {
     });
 
     const body = schema.parse(req.body);
-    const locationId = await resolveLocationId(body.assignedSiteId);
-    if (!locationId) throw new AppError('Assigned site not found', 404);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.assignedSiteId);
+    const location = await prisma.location.findFirst({
+      where: isUuid ? { id: body.assignedSiteId } : { code: body.assignedSiteId },
+    });
+    if (!location) throw new AppError('Assigned site not found', 404);
+
+    // Check duplicate username
+    const existing = await prisma.adminUser.findFirst({
+      where: { username: body.username.trim().toLowerCase() },
+    });
+    if (existing) {
+      throw new AppError(`Username "${body.username}" is already in use. Please select a unique username.`, 409);
+    }
 
     // Enforce password policy
     const validation = validatePassword(body.password, 'OPERATOR');
@@ -180,7 +202,11 @@ operatorsRouter.post('/', async (req, res, next) => {
         role: AdminRole.OPERATOR,
         status: 'Active',
         authMethod: 'Password',
-        locationId,
+        locationId: location.id,
+        lastLatitude: location.latitude,
+        lastLongitude: location.longitude,
+        lastLocationUpdate: new Date(),
+        geofenceStatus: 'INSIDE',
         mustChangePassword: true, // Mandatory password change on first login
         tokenVersion: 1,
       },
@@ -323,11 +349,23 @@ operatorsRouter.post('/:id/reassign', async (req, res, next) => {
 
     await prisma.$transaction(async (tx) => {
       // Reassign and bump tokenVersion to invalidate stale tokens with old site scope
+      // Also reposition operator coordinates to the new assigned site so their geofence boundary updates immediately
+      const newLat = typeof targetLocation.latitude === 'number' ? targetLocation.latitude : undefined;
+      const newLng = typeof targetLocation.longitude === 'number' ? targetLocation.longitude : undefined;
+
       await tx.adminUser.update({
         where: { id: op.id },
         data: {
           locationId: targetLocation.id,
           tokenVersion: { increment: 1 },
+          ...(newLat !== undefined && newLng !== undefined
+            ? {
+                lastLatitude: newLat,
+                lastLongitude: newLng,
+                lastLocationUpdate: new Date(),
+                geofenceStatus: 'INSIDE',
+              }
+            : {}),
         },
       });
 
@@ -367,7 +405,134 @@ operatorsRouter.post('/:id/reassign', async (req, res, next) => {
       operatorId: op.id,
       newSiteId: targetLocation.code,
       newSiteName: targetLocation.name,
+      newLatitude: targetLocation.latitude,
+      newLongitude: targetLocation.longitude,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/operators/:id/reactivate
+ * Revokes termination: reinstates operator account, assigns to a site, and logs event.
+ */
+operatorsRouter.post('/:id/reactivate', async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const schema = z.object({
+      siteId: z.string().min(1),
+      reason: z.string().optional(),
+    });
+    const body = schema.parse(req.body);
+
+    const isUuidSite = body.siteId.length === 36 && body.siteId.includes('-');
+    const targetLocation = await prisma.location.findFirst({
+      where: isUuidSite ? { id: body.siteId } : { code: body.siteId },
+    });
+    if (!targetLocation) throw new AppError('Target site not found', 404);
+
+    const op = await prisma.adminUser.findFirst({
+      where: {
+        role: AdminRole.OPERATOR,
+        ...(id.length === 36 && id.includes('-') ? { id } : { username: id }),
+      },
+    });
+    if (!op) throw new AppError('Operator not found', 404);
+
+    const adminName = req.user?.username ?? 'Admin';
+
+    await prisma.$transaction(async (tx) => {
+      await tx.adminUser.update({
+        where: { id: op.id },
+        data: {
+          status: 'Active',
+          locationId: targetLocation.id,
+          tokenVersion: { increment: 1 },
+          lastLatitude: targetLocation.latitude,
+          lastLongitude: targetLocation.longitude,
+          lastLocationUpdate: new Date(),
+          geofenceStatus: 'INSIDE',
+        },
+      });
+
+      await tx.operatorReassignment.create({
+        data: {
+          operatorId: op.id,
+          fromLocationId: op.locationId,
+          toLocationId: targetLocation.id,
+          reassignedBy: adminName,
+          reason: body.reason || 'Termination Revoked: Reinstated and assigned to site',
+        },
+      });
+    });
+
+    await logSecurityEvent({
+      eventType: 'OPERATOR_REINSTATED',
+      severity: 'HIGH',
+      actorId: req.user!.id,
+      actorUsername: req.user!.username,
+      actorRole: req.user!.role,
+      targetType: 'AdminUser',
+      targetId: op.id,
+      ipAddress: req.ip || req.socket.remoteAddress,
+      locationId: targetLocation.id,
+      resource: `/api/v1/operators/${id}/reactivate`,
+      action: 'REACTIVATE_OPERATOR',
+      status: 'SUCCESS',
+      details: {
+        reason: body.reason,
+        assignedSite: targetLocation.name,
+      },
+    });
+
+    const refreshed = await findOperator(op.id);
+    res.json({
+      success: true,
+      operator: refreshed ? formatOperator(refreshed) : null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/v1/operators/:id
+ * Permanently deletes operator data from database upon explicit admin action.
+ */
+operatorsRouter.delete('/:id', async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+
+    const op = await prisma.adminUser.findFirst({
+      where: {
+        role: AdminRole.OPERATOR,
+        ...(id.length === 36 && id.includes('-') ? { id } : { username: id }),
+      },
+    });
+    if (!op) throw new AppError('Operator not found', 404);
+
+    await prisma.adminUser.delete({
+      where: { id: op.id },
+    });
+
+    await logSecurityEvent({
+      eventType: 'OPERATOR_DELETED',
+      severity: 'HIGH',
+      actorId: req.user!.id,
+      actorUsername: req.user!.username,
+      actorRole: req.user!.role,
+      targetType: 'AdminUser',
+      targetId: op.id,
+      ipAddress: req.ip || req.socket.remoteAddress,
+      locationId: op.locationId,
+      resource: `/api/v1/operators/${id}`,
+      action: 'DELETE_OPERATOR',
+      status: 'SUCCESS',
+      details: { username: op.username, name: op.name },
+    });
+
+    res.json({ success: true, message: `Operator ${op.name || op.username} and associated records permanently deleted.` });
   } catch (err) {
     next(err);
   }

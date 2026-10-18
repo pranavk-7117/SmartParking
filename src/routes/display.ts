@@ -5,6 +5,39 @@ import prisma from '../lib/prisma';
 export const displayRouter = Router();
 
 /**
+ * GET /api/v1/display
+ * Returns availability for the primary active site along with a list of all active sites.
+ */
+displayRouter.get('/', async (_req, res, next) => {
+  try {
+    const locations = await prisma.location.findMany({
+      where: { status: 'Active' },
+      include: { slots: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (locations.length === 0) {
+      return res.status(404).json({ error: 'No active parking sites found' });
+    }
+
+    const primaryLocation = locations[0];
+    const primaryAvailability = calculateAvailability(primaryLocation);
+
+    const allSites = locations.map((loc) => ({
+      address: loc.address,
+      ...calculateAvailability(loc),
+    }));
+
+    return res.json({
+      ...primaryAvailability,
+      allSites,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/v1/display/:siteId
  * Public endpoint for Kiosk Display billboard.
  * No authentication required.

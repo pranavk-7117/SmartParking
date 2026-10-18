@@ -13,6 +13,8 @@ import {
   Phone,
   Mail,
   CheckCircle2,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { useLiveData } from '../context/LiveDataContext';
 import { useToast } from '../context/ToastContext';
@@ -22,10 +24,19 @@ import { Badge } from '../components/common/Badge';
 import { Modal, ConfirmationModal } from '../components/common/Modal';
 import { Input, Select, SearchInput } from '../components/common/Input';
 import { OperatorAccount } from '../types';
+import { AddSiteModal } from '../components/modals/AddSiteModal';
 
 export const OperatorManagement: React.FC = () => {
   const navigate = useNavigate();
-  const { operators, sites, addOperator, reassignOperatorSite, terminateOperator } = useLiveData();
+  const {
+    operators,
+    sites,
+    addOperator,
+    reassignOperatorSite,
+    terminateOperator,
+    reactivateOperator,
+    deleteOperator,
+  } = useLiveData();
   const { showToast } = useToast();
 
   // Filters
@@ -33,15 +44,28 @@ export const OperatorManagement: React.FC = () => {
   const [siteFilter, setSiteFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
 
+  // Sorting state (Requirement 9)
+  const [sortColumn, setSortColumn] = useState<string>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+
   // Add Operator Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [assignedSiteId, setAssignedSiteId] = useState(sites[0]?.id || 'site-hadapsar');
+  const [assignedSiteId, setAssignedSiteId] = useState('');
   const [addErrors, setAddErrors] = useState<{ name?: string; username?: string; contact?: string; password?: string }>({});
+
+  // Sync assigned site dynamically with real database sites
+  React.useEffect(() => {
+    if (!assignedSiteId && sites.length > 0) {
+      setAssignedSiteId(sites[0].id);
+    }
+  }, [sites, assignedSiteId]);
 
   // Reassign Site Modal State
   const [reassigningOperator, setReassigningOperator] = useState<OperatorAccount | null>(null);
@@ -51,7 +75,15 @@ export const OperatorManagement: React.FC = () => {
   // Terminate Confirmation Modal State
   const [terminatingOperator, setTerminatingOperator] = useState<OperatorAccount | null>(null);
 
-  // Filtered list across ALL sites by default per §3.9.1
+  // Requirement 10: Revoke Termination Modal State
+  const [reactivatingOperator, setReactivatingOperator] = useState<OperatorAccount | null>(null);
+  const [reactivateSiteId, setReactivateSiteId] = useState<string>('');
+  const [reactivateReason, setReactivateReason] = useState<string>('');
+
+  // Requirement 10: Delete Operator Data Confirmation Modal State
+  const [deletingOperator, setDeletingOperator] = useState<OperatorAccount | null>(null);
+
+  // Filtered list across ALL sites
   const filteredOperators = useMemo(() => {
     return operators.filter((op) => {
       const matchesSearch =
@@ -66,37 +98,93 @@ export const OperatorManagement: React.FC = () => {
     });
   }, [operators, searchQuery, siteFilter, statusFilter]);
 
-  const handleCreateOperator = (e: React.FormEvent) => {
+  // Requirement 9: Sorted operators list based on active column and direction
+  const sortedAndFilteredOperators = useMemo(() => {
+    const list = [...filteredOperators];
+    list.sort((a, b) => {
+      let valA: any = a[sortColumn as keyof OperatorAccount];
+      let valB: any = b[sortColumn as keyof OperatorAccount];
+
+      if (sortColumn === 'assignedSiteId') {
+        valA = sites.find((s) => s.id === a.assignedSiteId)?.name || a.assignedSiteId;
+        valB = sites.find((s) => s.id === b.assignedSiteId)?.name || b.assignedSiteId;
+      }
+
+      if (typeof valA === 'string') {
+        const cmp = valA.localeCompare(valB || '');
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+      if (typeof valA === 'number') {
+        return sortDirection === 'asc' ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
+      }
+      return 0;
+    });
+    return list;
+  }, [filteredOperators, sortColumn, sortDirection, sites]);
+
+  const handleSort = (columnKey: string) => {
+    if (sortColumn === columnKey) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(columnKey);
+      setSortDirection('asc');
+    }
+  };
+
+  const [isSubmittingOperator, setIsSubmittingOperator] = useState(false);
+
+  const handleCreateOperator = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: { name?: string; username?: string; contact?: string; password?: string } = {};
 
     if (!name.trim()) errors.name = 'Full name is required.';
-    if (!username.trim()) errors.username = 'Username is required.';
-    if (!contact.trim()) errors.contact = 'Contact phone number is required.';
-    if (!password.trim() || password.length < 6) errors.password = 'Password must be at least 6 characters.';
+    if (!username.trim() || username.trim().length < 3) errors.username = 'Username must be at least 3 characters.';
+    if (!contact.trim() || contact.trim().length < 8) errors.contact = 'Contact phone number must be at least 8 digits.';
+    
+    const pwd = password.trim() || 'Operator@12345';
+    if (password.trim()) {
+      if (password.length < 8) {
+        errors.password = 'Password must be at least 8 characters.';
+      } else if (!/[A-Z]/.test(password)) {
+        errors.password = 'Must contain at least one uppercase letter (A-Z).';
+      } else if (!/[a-z]/.test(password)) {
+        errors.password = 'Must contain at least one lowercase letter (a-z).';
+      } else if (!/[0-9]/.test(password)) {
+        errors.password = 'Must contain at least one number (0-9).';
+      } else if (!/[^A-Za-z0-9]/.test(password)) {
+        errors.password = 'Must contain at least one special character (@, #, $, etc.).';
+      }
+    }
 
     if (Object.keys(errors).length > 0) {
       setAddErrors(errors);
       return;
     }
 
-    addOperator({
-      name: name.trim(),
-      username: username.trim(),
-      contact: contact.trim(),
-      password: password.trim(),
-      email: addEmail.trim() || undefined,
-      assignedSiteId,
-    });
+    setIsSubmittingOperator(true);
+    try {
+      await addOperator({
+        name: name.trim(),
+        username: username.trim().toLowerCase(),
+        contact: contact.trim(),
+        password: pwd,
+        email: addEmail.trim() || undefined,
+        assignedSiteId,
+      });
 
-    showToast(`Operator "${name}" added successfully.`, 'success');
-    setIsAddModalOpen(false);
-    setName('');
-    setUsername('');
-    setContact('');
-    setPassword('');
-    setAddEmail('');
-    setAddErrors({});
+      showToast(`Operator "${name}" added successfully and saved to database.`, 'success');
+      setIsAddModalOpen(false);
+      setName('');
+      setUsername('');
+      setContact('');
+      setPassword('');
+      setAddEmail('');
+      setAddErrors({});
+    } catch (err: any) {
+      showToast(err.message || 'Failed to create operator. Please check username uniqueness and password rules.', 'error');
+    } finally {
+      setIsSubmittingOperator(false);
+    }
   };
 
   const handleConfirmReassign = (e: React.FormEvent) => {
@@ -120,6 +208,43 @@ export const OperatorManagement: React.FC = () => {
     terminateOperator(terminatingOperator.id);
     showToast(`Operator ${terminatingOperator.name} has been terminated.`, 'warning');
     setTerminatingOperator(null);
+  };
+
+  // Requirement 10: Revoke termination and reinstate
+  const handleConfirmReactivate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reactivatingOperator || !reactivateSiteId) return;
+
+    try {
+      await reactivateOperator(
+        reactivatingOperator.id,
+        reactivateSiteId,
+        reactivateReason.trim() || 'Termination revoked by admin'
+      );
+      const targetSite = sites.find((s) => s.id === reactivateSiteId);
+      showToast(
+        `Operator ${reactivatingOperator.name} reinstated and assigned to ${targetSite?.name || 'site'}.`,
+        'success'
+      );
+      setReactivatingOperator(null);
+      setReactivateSiteId('');
+      setReactivateReason('');
+    } catch {
+      showToast('Failed to reinstate operator.', 'error');
+    }
+  };
+
+  // Requirement 10: Delete operator records from database
+  const handleConfirmDelete = async () => {
+    if (!deletingOperator) return;
+
+    try {
+      await deleteOperator(deletingOperator.id);
+      showToast(`Operator ${deletingOperator.name} and all data permanently deleted.`, 'success');
+      setDeletingOperator(null);
+    } catch {
+      showToast('Failed to delete operator data.', 'error');
+    }
   };
 
   const siteOptions = useMemo(() => {
@@ -160,6 +285,7 @@ export const OperatorManagement: React.FC = () => {
     {
       key: 'contact',
       header: 'Contact Phone',
+      sortable: true,
       render: (op) => (
         <span className="text-xs font-mono text-neutral-700">{op.contact}</span>
       ),
@@ -183,27 +309,40 @@ export const OperatorManagement: React.FC = () => {
     },
     {
       key: 'geofenceStatus',
-      header: 'Live Geofence',
+      header: 'Live Status & Location',
       align: 'center',
       render: (op) => {
         if (op.status === 'Terminated') {
-          return <span className="text-xs text-neutral-400">—</span>;
+          return <span className="text-xs text-neutral-400">Terminated</span>;
         }
         const isBreached = op.geofenceStatus === 'BREACHED';
+        const isOnline = op.isOnline;
         return (
           <div className="flex flex-col items-center">
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 isBreached
                   ? 'bg-rose-100 text-rose-800'
-                  : 'bg-emerald-100 text-emerald-800'
+                  : isOnline
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-slate-100 text-slate-700'
               }`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isBreached ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
-              <span>{isBreached ? 'Breached (>500m)' : 'Inside Site'}</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isBreached
+                    ? 'bg-rose-500 animate-pulse'
+                    : isOnline
+                    ? 'bg-emerald-500'
+                    : 'bg-slate-400'
+                }`}
+              />
+              <span>
+                {isBreached ? 'Breached (>500m)' : isOnline ? 'Online (Live)' : 'Offline'}
+              </span>
             </span>
             <span className="text-[10px] text-neutral-400 mt-0.5">
-              {op.lastLocationUpdate || 'Live'}
+              {op.lastLocationUpdate ? new Date(op.lastLocationUpdate).toLocaleTimeString() : 'N/A'}
             </span>
           </div>
         );
@@ -231,6 +370,17 @@ export const OperatorManagement: React.FC = () => {
             Profile
           </Button>
 
+          {/* Requirement 7: Option to click and be redirected to live map */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/dashboard', { state: { focusOperatorId: op.id } })}
+            title="Locate on Live Radar Map"
+            leftIcon={<MapPin className="w-3.5 h-3.5 text-primary" />}
+          >
+            Map
+          </Button>
+
           {op.status === 'Active' && (
             <Button
               variant="secondary"
@@ -256,6 +406,34 @@ export const OperatorManagement: React.FC = () => {
               Terminate
             </Button>
           )}
+
+          {/* Requirement 10: Options after termination */}
+          {op.status === 'Terminated' && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setReactivatingOperator(op);
+                  setReactivateSiteId(sites[0]?.id || '');
+                }}
+                className="text-emerald-700 hover:text-emerald-800 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
+                title="Revoke termination & reinstate operator"
+                leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+              >
+                Revoke Termination
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeletingOperator(op)}
+                title="Permanently delete all operator data from database"
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Data
+              </Button>
+            </>
+          )}
         </div>
       ),
     },
@@ -263,50 +441,60 @@ export const OperatorManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Header with Title and Quick Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-neutral-900 tracking-tight">
-            Operator Management
-          </h1>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Staff roster and site assignment management
+          <div className="flex items-center gap-2">
+            <Users className="w-6 h-6 text-primary" />
+            <h1 className="text-2xl font-black text-neutral-900 tracking-tight">
+              Operator Management
+            </h1>
+          </div>
+          <p className="text-xs text-neutral-500 mt-1">
+            Manage field operator personnel, credentials, live site reassignments, and GPS telemetry
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="md"
-          leftIcon={<UserPlus className="w-4 h-4" />}
-          onClick={() => {
-            setAddErrors({});
-            setIsAddModalOpen(true);
-          }}
-        >
-          Add Operator
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Requirement 7: Header button to view live map */}
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/dashboard#live-map')}
+            leftIcon={<MapPin className="w-4 h-4 text-primary" />}
+          >
+            View Live Radar Map
+          </Button>
+
+          <Button
+            variant="primary"
+            onClick={() => setIsAddModalOpen(true)}
+            leftIcon={<UserPlus className="w-4 h-4" />}
+          >
+            Add Operator
+          </Button>
+        </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <div className="w-full md:w-auto flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+      {/* Filter and Search Bar */}
+      <div className="bg-white p-4 rounded-card border border-neutral-200 shadow-soft flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
           <div className="w-full sm:w-64">
             <SearchInput
+              placeholder="Search by name, username, or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, email, phone..."
             />
           </div>
 
-          <div className="w-full sm:w-48">
+          <div className="w-44">
             <Select
               value={siteFilter}
               onChange={(e) => setSiteFilter(e.target.value)}
-              options={[{ value: 'All', label: 'All Sites (Global)' }, ...siteOptions]}
+              options={[{ value: 'All', label: 'All Sites' }, ...siteOptions]}
             />
           </div>
 
-          <div className="w-full sm:w-36">
+          <div className="w-40">
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -320,21 +508,24 @@ export const OperatorManagement: React.FC = () => {
         </div>
 
         <span className="text-xs text-neutral-500 shrink-0 self-end sm:self-center">
-          Showing {filteredOperators.length} operators
+          Showing {sortedAndFilteredOperators.length} operators
         </span>
       </div>
 
-      {/* Operators Table */}
+      {/* Requirement 9: Operators Table with working column sorting */}
       <Table
         columns={columns}
-        data={filteredOperators}
+        data={sortedAndFilteredOperators}
         keyExtractor={(op) => op.id}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
         onRowClick={(op) => navigate(`/operators/${op.id}`)}
         emptyTitle="No operators found"
         emptyDescription="Try adjusting your site or status filter to locate staff members."
       />
 
-      {/* Add Operator Modal per §3.9.2 */}
+      {/* Add Operator Modal */}
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -363,7 +554,8 @@ export const OperatorManagement: React.FC = () => {
           <Input
             label="Password"
             type="password"
-            placeholder="Minimum 6 characters"
+            placeholder="Enter temporary password"
+            helperText="Must contain at least 8 characters (uppercase, lowercase, number, symbol)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             error={addErrors.password}
@@ -387,19 +579,35 @@ export const OperatorManagement: React.FC = () => {
             onChange={(e) => setAddEmail(e.target.value)}
           />
 
-          <Select
-            label="Initial Assigned Site"
-            value={assignedSiteId}
-            onChange={(e) => setAssignedSiteId(e.target.value)}
-            options={siteOptions}
-          />
+          {sites.length === 0 ? (
+            <div className="p-3.5 bg-amber-50 rounded-control border border-amber-200 text-xs text-amber-900 space-y-2">
+              <p className="font-bold">No parking facilities found in database.</p>
+              <p className="text-amber-800">You must register at least one parking facility site before creating operators.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setIsAddSiteModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-control bg-primary hover:bg-primary-dark text-white font-bold text-xs cursor-pointer shadow-2xs"
+              >
+                + Add Parking Site First
+              </button>
+            </div>
+          ) : (
+            <Select
+              label="Initial Assigned Site"
+              value={assignedSiteId}
+              onChange={(e) => setAssignedSiteId(e.target.value)}
+              options={siteOptions}
+              required
+            />
+          )}
 
-          {/* Helper Note */}
           <div className="p-3 bg-blue-50/80 rounded-control border border-blue-200 flex items-start gap-2.5 text-xs text-blue-800">
             <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
             <p className="leading-relaxed">
               The operator will use the <strong>username</strong> and <strong>password</strong> you set here to log in to the Android app.
-              They can update their profile, change their password, and add personal details from the app's Settings screen.
             </p>
           </div>
 
@@ -407,14 +615,14 @@ export const OperatorManagement: React.FC = () => {
             <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
-              Create Operator
+            <Button type="submit" variant="primary" disabled={isSubmittingOperator}>
+              {isSubmittingOperator ? 'Creating in Database...' : 'Create Operator'}
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Reassign Site Modal per §3.9.4 */}
+      {/* Reassign Site Modal */}
       {reassigningOperator && (
         <Modal
           isOpen={!!reassigningOperator}
@@ -461,7 +669,7 @@ export const OperatorManagement: React.FC = () => {
         </Modal>
       )}
 
-      {/* Terminate Operator Confirmation Modal per §3.9.3 */}
+      {/* Terminate Operator Confirmation Modal */}
       {terminatingOperator && (
         <ConfirmationModal
           isOpen={!!terminatingOperator}
@@ -469,11 +677,68 @@ export const OperatorManagement: React.FC = () => {
           onConfirm={handleConfirmTerminate}
           title="Terminate Operator"
           itemName={terminatingOperator.name}
-          message="Are you sure you want to terminate this operator? Their login access will be permanently revoked, but historical session associations and transfer logs will be preserved."
+          message="Are you sure you want to terminate this operator? Their login access will be immediately revoked."
           isDestructive={true}
           confirmLabel="Terminate Operator"
         />
       )}
+
+      {/* Requirement 10: Revoke Termination Modal */}
+      {reactivatingOperator && (
+        <Modal
+          isOpen={!!reactivatingOperator}
+          onClose={() => setReactivatingOperator(null)}
+          title={`Revoke Termination: ${reactivatingOperator.name}`}
+          description="Reactivate operator account and assign them to an active parking site"
+        >
+          <form onSubmit={handleConfirmReactivate} className="space-y-4">
+            <Select
+              label="Assign to Parking Site"
+              value={reactivateSiteId}
+              onChange={(e) => setReactivateSiteId(e.target.value)}
+              options={sites.map((s) => ({
+                value: s.id,
+                label: `${s.name} (${s.address})`,
+              }))}
+            />
+
+            <Input
+              label="Reinstatement Notes / Reason (Recorded in Activity Summary)"
+              placeholder="e.g. Issue resolved; reinstated to Hadapsar team"
+              value={reactivateReason}
+              onChange={(e) => setReactivateReason(e.target.value)}
+            />
+
+            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-neutral-100">
+              <Button variant="secondary" onClick={() => setReactivatingOperator(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Confirm Reinstatement
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Requirement 10: Delete Operator Data Confirmation Modal */}
+      {deletingOperator && (
+        <ConfirmationModal
+          isOpen={!!deletingOperator}
+          onClose={() => setDeletingOperator(null)}
+          onConfirm={handleConfirmDelete}
+          title="Delete Operator Data"
+          itemName={deletingOperator.name}
+          message="Are you sure you want to permanently delete all data for this operator from the database? This action cannot be undone."
+          isDestructive={true}
+          confirmLabel="Delete All Data"
+        />
+      )}
+      <AddSiteModal
+        isOpen={isAddSiteModalOpen}
+        onClose={() => setIsAddSiteModalOpen(false)}
+        onSiteCreated={(newId) => setAssignedSiteId(newId)}
+      />
     </div>
   );
 };

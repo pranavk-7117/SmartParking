@@ -43,17 +43,17 @@ export const KioskDisplay: React.FC = () => {
   const [notFound, setNotFound] = useState(false);
   const [hasRecentUpdate, setHasRecentUpdate] = useState(false);
 
-  // If a specific siteId is provided, fetch and poll /api/v1/display/:siteId directly
-  useEffect(() => {
-    if (!siteId) {
-      setNotFound(false);
-      return;
-    }
+  const [availableSitesList, setAvailableSitesList] = useState<{ siteId: string; siteName: string }[]>([]);
+  const [activeSiteCode, setActiveSiteCode] = useState<string>(siteId || '');
 
+  // Fetch live site display from public kiosk API
+  useEffect(() => {
     let isMounted = true;
-    const fetchSiteDisplay = async () => {
+    const targetUrl = activeSiteCode ? `/api/v1/display/${encodeURIComponent(activeSiteCode)}` : `/api/v1/display`;
+
+    const fetchDisplay = async () => {
       try {
-        const res = await fetch(`/api/v1/display/${encodeURIComponent(siteId)}`);
+        const res = await fetch(targetUrl);
         if (res.status === 404) {
           if (isMounted) setNotFound(true);
           return;
@@ -63,30 +63,36 @@ export const KioskDisplay: React.FC = () => {
           if (isMounted) {
             setNotFound(false);
             setSiteData(data);
+            if (data.allSites && Array.isArray(data.allSites)) {
+              setAvailableSitesList(data.allSites);
+              if (!activeSiteCode && data.siteId) {
+                setActiveSiteCode(data.siteId);
+              }
+            }
             setHasRecentUpdate(true);
             setTimeout(() => setHasRecentUpdate(false), 800);
           }
         }
       } catch {
-        // Network retry on next interval
+        // Retry next interval
       }
     };
 
-    fetchSiteDisplay();
-    const interval = setInterval(fetchSiteDisplay, 5000);
+    fetchDisplay();
+    const interval = setInterval(fetchDisplay, 4000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [siteId]);
+  }, [activeSiteCode]);
 
   const availability = siteData || defaultAvailability;
-  const isFacilityFull = siteData ? siteData.isFacilityFull : contextFull;
+  const isFacilityFull = siteData ? siteData.isFacilityFull : false;
 
+  // Real live facility full: ONLY when total slots exist and total available is strictly 0
   const isFull =
     queryStateFull ||
-    isFacilityFull ||
-    (availability.carAvailable === 0 && availability.scooterAvailable === 0);
+    (availability.totalSlots > 0 && availability.totalAvailable === 0);
 
   useEffect(() => {
     setSecondsAgo(0);
@@ -182,6 +188,24 @@ export const KioskDisplay: React.FC = () => {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Dashboard</span>
           </Link>
+
+          {/* Facility Site Selector */}
+          {availableSitesList.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-neutral-800/80 px-2.5 py-1 rounded-control border border-neutral-700 text-xs text-white">
+              <span className="text-neutral-400 font-medium hidden sm:inline">Facility:</span>
+              <select
+                value={activeSiteCode}
+                onChange={(e) => setActiveSiteCode(e.target.value)}
+                className="bg-transparent text-white font-bold outline-none cursor-pointer text-xs"
+              >
+                {availableSitesList.map((s) => (
+                  <option key={s.siteId} value={s.siteId} className="bg-neutral-900 text-white">
+                    {s.siteName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="hidden sm:flex items-center gap-1 bg-neutral-800/80 p-0.5 rounded-control border border-neutral-700 text-xs">
             <button

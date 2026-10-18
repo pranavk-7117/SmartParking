@@ -357,11 +357,6 @@ export const OperatorProfile: React.FC = () => {
               </div>
             </div>
           </div>
-
-          <div className="p-2.5 bg-neutral-100/70 rounded-control text-[11px] text-neutral-500 flex items-center justify-between">
-            <span>Shift Attendance & Payroll:</span>
-            <span className="font-semibold text-neutral-700">Planned Phase 2</span>
-          </div>
         </Card>
       </div>
 

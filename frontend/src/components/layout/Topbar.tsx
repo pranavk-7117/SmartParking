@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, ChevronDown, Check, Building2, MapPin, Car, Layers, PanelLeftClose, PanelLeftOpen, RefreshCw } from 'lucide-react';
+import { Menu, ChevronDown, Check, Building2, MapPin, Car, Layers, PanelLeftClose, PanelLeftOpen, RefreshCw, Plus } from 'lucide-react';
 import { useLiveData } from '../../context/LiveDataContext';
+import { AddSiteModal } from '../modals/AddSiteModal';
 
 export interface TopbarProps {
   onOpenMobileMenu: () => void;
@@ -16,6 +17,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 }) => {
   const { sites, currentSiteId, currentSite, setCurrentSiteId, availability, refresh } = useLiveData();
   const [isSiteDropdownOpen, setIsSiteDropdownOpen] = useState(false);
+  const [isAddSiteModalOpen, setIsAddSiteModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +34,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   const totalNetworkScooters = sites.reduce((sum, s) => sum + (s.totalScooterSlots || 0), 0);
 
   return (
-    <header className="sticky top-0 z-20 bg-white border-b border-neutral-200 shadow-soft">
+    <>
+      <header className="sticky top-0 z-20 bg-white border-b border-neutral-200 shadow-soft">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* Left: Mobile hamburger, Desktop sidebar toggle & Site Switcher */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -181,6 +184,21 @@ export const Topbar: React.FC<TopbarProps> = ({
                     );
                   })}
                 </div>
+
+                {/* Add New Site Option in dropdown */}
+                <div className="p-2 border-t border-neutral-100 bg-neutral-50/70">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSiteDropdownOpen(false);
+                      setIsAddSiteModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-control bg-primary hover:bg-primary-dark text-white text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add New Parking Site</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -203,28 +221,14 @@ export const Topbar: React.FC<TopbarProps> = ({
           </Link>
         </div>
 
-        { /* Right: Manual Sync Refresh + Capacity Summary */ }
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={refresh}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-control text-xs font-semibold text-neutral-600 hover:text-primary hover:bg-neutral-100 border border-neutral-200 transition-all cursor-pointer shadow-2xs"
-            title="Sync with database now"
-            aria-label="Sync with database now"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-neutral-500 hover:text-primary" />
-            <span className="hidden sm:inline">Sync</span>
-          </button>
-          <div className="hidden lg:flex flex-col text-right">
-            <span className="text-xs font-semibold text-neutral-700">
-              {currentSite.gateInfo}
-            </span>
-            <span className="text-[10px] text-neutral-400">
-              {availability.totalAvailable} / {availability.totalSlots} Slots Vacant
-            </span>
-          </div>
-        </div>
+        { /* Right: Reserved empty space to keep center balanced */ }
+        <div className="flex items-center gap-2"></div>
       </div>
     </header>
-  );
+    <AddSiteModal
+      isOpen={isAddSiteModalOpen}
+      onClose={() => setIsAddSiteModalOpen(false)}
+    />
+  </>
+);
 };

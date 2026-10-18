@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -27,7 +27,7 @@ import { OperatorAccount } from '../types';
 export const SiteDetails: React.FC = () => {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
-  const { sites, operators, allSlots, rates, updateSite } = useLiveData();
+  const { sites, operators, allSlots, rates, allSessions, updateSite } = useLiveData();
   const { showToast } = useToast();
 
   const site = sites.find((s) => s.id === siteId);
@@ -66,17 +66,39 @@ export const SiteDetails: React.FC = () => {
   const carRate = siteRates.find((r) => r.category === 'Car')?.hourlyRate || site.defaultCarRate;
   const scooterRate = siteRates.find((r) => r.category === 'Scooter')?.hourlyRate || site.defaultScooterRate;
 
-  const revenueTrendPoints = [
-    { label: '29-Aug', value: site.id === 'site-hadapsar' ? 6840 : 4210 },
-    { label: '30-Aug', value: site.id === 'site-hadapsar' ? 7210 : 4550 },
-    { label: '31-Aug', value: site.id === 'site-hadapsar' ? 8120 : 5100 },
-    { label: '01-Sep', value: site.id === 'site-hadapsar' ? 7850 : 4920 },
-    { label: '02-Sep', value: site.id === 'site-hadapsar' ? 8640 : 5430 },
-    { label: '03-Sep', value: site.id === 'site-hadapsar' ? 9110 : 5890 },
-    { label: '04-Sep', value: site.id === 'site-hadapsar' ? 6450 : 3820 },
-  ];
+  // Real completed sessions scoped strictly to this site (zero mock data)
+  const siteCompleted = (allSessions || []).filter(
+    (s) => (s.siteId === site.id || s.siteId === (site as any).code) && s.status === 'Completed'
+  );
 
-  const totalWeeklyRevenue = revenueTrendPoints.reduce((acc, curr) => acc + curr.value, 0);
+  // Calculate real total revenue strictly from transactions
+  const totalWeeklyRevenue = siteCompleted.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+  // Real 7-day revenue trend dynamically computed from session records
+  const revenueTrendPoints = useMemo(() => {
+    const days: { label: string; dateStr: string; value: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const label = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+      days.push({ label, dateStr, value: 0 });
+    }
+
+    siteCompleted.forEach((session) => {
+      const timeStr = session.outTime || session.inTime;
+      if (timeStr) {
+        const sessionDate = new Date(timeStr).toISOString().split('T')[0];
+        const matchingDay = days.find((day) => day.dateStr === sessionDate);
+        if (matchingDay) {
+          matchingDay.value += session.amount || 0;
+        }
+      }
+    });
+
+    return days.map(({ label, value }) => ({ label, value }));
+  }, [siteCompleted]);
 
   const operatorColumns: Column<OperatorAccount>[] = [
     {
@@ -264,10 +286,17 @@ export const SiteDetails: React.FC = () => {
         </div>
 
         <div className="pt-2">
-          <LineChart
-            data={revenueTrendPoints}
-            valueFormatter={(val) => `₹${val.toLocaleString()}`}
-          />
+          {totalWeeklyRevenue > 0 ? (
+            <LineChart
+              data={revenueTrendPoints}
+              valueFormatter={(val) => `₹${val.toLocaleString()}`}
+            />
+          ) : (
+            <div className="py-8 text-center bg-neutral-50 rounded-control border border-neutral-100">
+              <p className="text-xs font-semibold text-neutral-600">No completed sessions recorded yet for this facility.</p>
+              <p className="text-[11px] text-neutral-400 mt-0.5">Revenue chart and trends will dynamically populate as vehicles check out.</p>
+            </div>
+          )}
         </div>
       </Card>
 

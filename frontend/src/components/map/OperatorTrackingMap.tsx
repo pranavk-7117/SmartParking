@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -6,37 +7,33 @@ import {
   Shield,
   AlertTriangle,
   Radio,
-  CheckCircle2,
   Navigation,
   RefreshCw,
   Eye,
   Info,
   Layers,
   Crosshair,
-  Copy,
   Check,
   User,
   Clock,
   Phone,
+  Plus,
+  ExternalLink,
+  ChevronDown,
 } from 'lucide-react';
-import { Card } from '../common/Card';
-import { Badge } from '../common/Badge';
 import { Site, OperatorAccount } from '../../types';
 
 interface OperatorTrackingMapProps {
   sites: Site[];
   operators: OperatorAccount[];
   selectedSiteId?: string;
+  focusOperatorId?: string;
   onSelectSite?: (siteId: string) => void;
+  onOpenAddSite?: () => void;
   className?: string;
 }
 
-// Known coordinates for default sites in Pune (fallback if latitude/longitude is not present)
-const DEFAULT_SITE_COORDS: Record<string, { lat: number; lng: number }> = {
-  'site-camp': { lat: 18.5133, lng: 73.8784 },
-  'site-hadapsar': { lat: 18.5089, lng: 73.9259 },
-  'site-kothrud': { lat: 18.5074, lng: 73.8077 },
-};
+
 
 // Haversine formula for exact distance in meters
 function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -53,38 +50,28 @@ function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
   return Math.round(R * c);
 }
 
-// Map tile layers (Google Maps and Esri/OSM - 100% free, reliable, no watermark)
-type TileLayerStyle = 'google' | 'streets' | 'satellite' | 'google_hybrid' | 'osm';
+// Requirement 1: Removed CartoDB Voyager. Verified, 100% reliable tile layers
+type TileLayerStyle = 'google' | 'google_hybrid' | 'streets' | 'satellite';
 
-const TILE_LAYERS: Record<TileLayerStyle, { name: string; url: string; attribution: string; maxZoom: number }> = {
+const TILE_LAYERS: Record<TileLayerStyle, { name: string; url: string; maxZoom: number }> = {
   google: {
     name: 'Google Maps (Roadmap)',
     url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-    attribution: '&copy; Google Maps',
+    maxZoom: 20,
+  },
+  google_hybrid: {
+    name: 'Google Maps (Satellite Hybrid)',
+    url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
     maxZoom: 20,
   },
   streets: {
     name: 'Esri World Street Map',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri &copy; OpenStreetMap contributors',
     maxZoom: 19,
   },
   satellite: {
     name: 'Esri Satellite Imagery',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri, Maxar, Earthstar Geographics',
-    maxZoom: 19,
-  },
-  google_hybrid: {
-    name: 'Google Maps (Satellite Hybrid)',
-    url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-    attribution: '&copy; Google Maps',
-    maxZoom: 20,
-  },
-  osm: {
-    name: 'OpenStreetMap Streets',
-    url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 19,
   },
 };
@@ -93,68 +80,115 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
   sites,
   operators,
   selectedSiteId,
+  focusOperatorId,
   onSelectSite,
+  onOpenAddSite,
   className = '',
 }) => {
+  const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const operatorMarkersMapRef = useRef<Map<string, L.Marker>>(new Map());
   const hasFittedRef = useRef(false);
-  const prevSelectedSiteIdRef = useRef<string | undefined>(selectedSiteId);
 
   const [mapStyle, setMapStyle] = useState<TileLayerStyle>('google');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'inside' | 'breached'>('all');
-  const [clickedCoords, setClickedCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [copiedCoords, setCopiedCoords] = useState(false);
   const [isStyleMenuOpen, setIsStyleMenuOpen] = useState(false);
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>(focusOperatorId || '');
+  const [isRadarSweepActive, setIsRadarSweepActive] = useState(true);
 
-  // Parse sites with real coordinates
-  const sitesWithCoords = useMemo(() => {
-    return sites.map((s, idx) => {
-      let lat = typeof s.latitude === 'number' && !isNaN(s.latitude) ? s.latitude : undefined;
-      let lng = typeof s.longitude === 'number' && !isNaN(s.longitude) ? s.longitude : undefined;
+  // Expose global navigator so Leaflet popup HTML buttons can trigger React Router navigation
+  useEffect(() => {
+    (window as any).__parkit_view_operator = (opId: string) => {
+      navigate(`/operators/${opId}`);
+    };
+    return () => {
+      delete (window as any).__parkit_view_operator;
+    };
+  }, [navigate]);
 
-      if (lat === undefined || lng === undefined) {
-        const fallback = DEFAULT_SITE_COORDS[s.id] || {
-          lat: 18.5204 + (idx - 1) * 0.015,
-          lng: 73.8567 + (idx - 1) * 0.025,
-        };
-        lat = fallback.lat;
-        lng = fallback.lng;
-      }
+  // Sync focusOperatorId prop
+  useEffect(() => {
+    if (focusOperatorId) {
+      setSelectedOperatorId(focusOperatorId);
+    }
+  }, [focusOperatorId]);
 
-      return {
+interface SiteWithCoords extends Site {
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+}
+
+  // Parse sites with real coordinates strictly (zero mock fallback)
+  const sitesWithCoords: SiteWithCoords[] = useMemo(() => {
+    return sites
+      .filter(
+        (s): s is Site & { latitude: number; longitude: number } =>
+          typeof s.latitude === 'number' &&
+          typeof s.longitude === 'number' &&
+          !isNaN(s.latitude) &&
+          !isNaN(s.longitude)
+      )
+      .map((s) => ({
         ...s,
-        lat,
-        lng,
+        lat: Number(s.latitude),
+        lng: Number(s.longitude),
         radiusMeters: 500,
-      };
-    });
+      }));
   }, [sites]);
 
-  // Map each operator with location and assigned site distance
+  // Map each operator with location, online/offline freshness, and assigned site distance
   const operatorsWithDistance = useMemo(() => {
-    return operators.map((op, idx) => {
-      const assignedSite = sitesWithCoords.find((s) => s.id === op.assignedSiteId) || sitesWithCoords[0];
-      const hasGps = typeof op.lastLatitude === 'number' && typeof op.lastLongitude === 'number';
+    return operators.map((op) => {
+      const assignedSite = sitesWithCoords.find(
+        (s) =>
+          s.id === op.assignedSiteId ||
+          (s as any).code === op.assignedSiteId ||
+          (s as any).dbId === op.assignedSiteId
+      );
 
-      // Default sample position if not reported yet
-      const lat = hasGps ? op.lastLatitude! : (assignedSite?.lat ? assignedSite.lat + 0.001 * (idx + 1) : 18.5133);
-      const lng = hasGps ? op.lastLongitude! : (assignedSite?.lng ? assignedSite.lng + 0.001 * (idx + 1) : 73.8784);
+      const hasGps =
+        typeof op.lastLatitude === 'number' &&
+        typeof op.lastLongitude === 'number' &&
+        !isNaN(op.lastLatitude) &&
+        !isNaN(op.lastLongitude);
+
+      const lat = hasGps ? op.lastLatitude! : null;
+      const lng = hasGps ? op.lastLongitude! : null;
 
       let distance = 0;
-      if (assignedSite) {
+      if (assignedSite && hasGps && lat !== null && lng !== null) {
         distance = calculateDistanceMeters(lat, lng, assignedSite.lat, assignedSite.lng);
       }
 
-      const isBreached = op.geofenceStatus === 'BREACHED' || distance > 500;
+      const isBreached = op.geofenceStatus === 'BREACHED' || (hasGps && distance > 500);
+
+      const now = Date.now();
+      const updateTime = op.lastLocationUpdate ? new Date(op.lastLocationUpdate).getTime() : 0;
+      const isOnline = Boolean(hasGps && updateTime > 0 && now - updateTime <= 5 * 60 * 1000);
+
+      let lastSeenText = 'No GPS broadcast';
+      if (updateTime > 0) {
+        const diffMinutes = Math.floor((now - updateTime) / 60000);
+        if (diffMinutes < 1) {
+          lastSeenText = 'Just now (Live)';
+        } else if (diffMinutes < 60) {
+          lastSeenText = `${diffMinutes}m ago`;
+        } else {
+          const diffHours = Math.floor(diffMinutes / 60);
+          lastSeenText = `${diffHours}h ${diffMinutes % 60}m ago`;
+        }
+      }
 
       return {
         ...op,
         computedLat: lat,
         computedLng: lng,
         hasRealGps: hasGps,
+        isOnline,
+        lastSeenText,
         assignedSite,
         distanceMeters: distance,
         isBreached,
@@ -162,63 +196,40 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
     });
   }, [operators, sitesWithCoords]);
 
-  // Filtered operators
-  const filteredOperators = useMemo(() => {
-    if (activeFilter === 'inside') {
-      return operatorsWithDistance.filter((o) => !o.isBreached);
-    }
-    if (activeFilter === 'breached') {
-      return operatorsWithDistance.filter((o) => o.isBreached);
-    }
-    return operatorsWithDistance;
-  }, [operatorsWithDistance, activeFilter]);
+  // Selected operator object for side panel
+  const selectedOperator = useMemo(() => {
+    return operatorsWithDistance.find((o) => o.id === selectedOperatorId) || null;
+  }, [operatorsWithDistance, selectedOperatorId]);
 
-  const breachedCount = useMemo(() => {
-    return operatorsWithDistance.filter((o) => o.isBreached).length;
-  }, [operatorsWithDistance]);
-
-  const insideCount = operatorsWithDistance.length - breachedCount;
-
-  // Initialize Map
+  // 1. Initialize Leaflet Map (Requirement 3: attributionControl false completely removes Leaflet link)
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapInstanceRef.current) return;
 
-    // Center on Pune
-    const initialCenter: [number, number] = [18.5133, 73.8784];
+    const initialCenter: [number, number] = [18.515, 73.865];
     const map = L.map(mapContainerRef.current, {
       center: initialCenter,
-      zoom: 13,
+      zoom: 12,
       zoomControl: false,
-      attributionControl: true,
+      attributionControl: false, // Requirement 3: Leaflet watermark removed completely
     });
 
-    // Custom Zoom control at top-right
     L.control.zoom({ position: 'topright' }).addTo(map);
 
-    // Initial Tile Layer
-    const tileConfig = TILE_LAYERS[mapStyle];
-    const tileLayer = L.tileLayer(tileConfig.url, {
-      attribution: tileConfig.attribution,
-      maxZoom: tileConfig.maxZoom,
-      subdomains: 'abcd',
-    }).addTo(map);
+    const layerConfig = TILE_LAYERS[mapStyle];
+    const tileLayer = L.tileLayer(layerConfig.url, {
+      maxZoom: layerConfig.maxZoom,
+    });
+    tileLayer.addTo(map);
     tileLayerRef.current = tileLayer;
 
-    // Layer Group for dynamic markers & circles
-    const markersLayer = L.layerGroup().addTo(map);
-    markersLayerRef.current = markersLayer;
-
-    // Click handler to inspect coordinates for adding new sites
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      setClickedCoords({
-        lat: Number(e.latlng.lat.toFixed(5)),
-        lng: Number(e.latlng.lng.toFixed(5)),
-      });
-      setCopiedCoords(false);
-    });
-
+    const markersGroup = L.layerGroup().addTo(map);
+    markersLayerRef.current = markersGroup;
     mapInstanceRef.current = map;
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
 
     return () => {
       map.remove();
@@ -226,65 +237,56 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Switch Tile Layer when mapStyle changes
+  // 2. Change Tile Layer Dynamically
   useEffect(() => {
     if (!mapInstanceRef.current) return;
-    const map = mapInstanceRef.current;
-
+    const layerConfig = TILE_LAYERS[mapStyle];
     if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
     }
-
-    const tileConfig = TILE_LAYERS[mapStyle];
-    const newLayer = L.tileLayer(tileConfig.url, {
-      attribution: tileConfig.attribution,
-      maxZoom: tileConfig.maxZoom,
-      subdomains: 'abcd',
-    }).addTo(map);
+    const newLayer = L.tileLayer(layerConfig.url, {
+      maxZoom: layerConfig.maxZoom,
+    });
+    newLayer.addTo(mapInstanceRef.current);
     tileLayerRef.current = newLayer;
   }, [mapStyle]);
 
-  // Render Site Pins, Geofence Radius Circles, Operator Markers & Connectors
+  // 3. Render Sites, Geofences, and Operators
   useEffect(() => {
     if (!mapInstanceRef.current || !markersLayerRef.current) return;
+
     const markersLayer = markersLayerRef.current;
     markersLayer.clearLayers();
+    operatorMarkersMapRef.current.clear();
 
     const allLatLngs: [number, number][] = [];
 
-    // 1. Draw Parking Sites
+    // 1. Draw Sites and their 500m Geofences
     sitesWithCoords.forEach((site) => {
-      const isSelected = selectedSiteId && selectedSiteId !== 'all' && site.id === selectedSiteId;
       allLatLngs.push([site.lat, site.lng]);
+      const isSelected = selectedSiteId === site.id;
+      const siteColor = isSelected ? '#1d4ed8' : '#2563eb';
 
-      // 500m Geofence Circle
+      // 500m Geofence Perimeter Circle
       const circle = L.circle([site.lat, site.lng], {
         radius: site.radiusMeters,
-        color: isSelected ? '#1d4ed8' : '#2563eb',
-        weight: isSelected ? 3 : 2,
-        opacity: 0.9,
-        fillColor: isSelected ? '#3b82f6' : '#60a5fa',
-        fillOpacity: isSelected ? 0.22 : 0.12,
-        dashArray: '6, 6',
+        color: siteColor,
+        weight: isSelected ? 2.5 : 1.5,
+        opacity: isSelected ? 0.9 : 0.6,
+        fillColor: siteColor,
+        fillOpacity: isSelected ? 0.15 : 0.07,
+        dashArray: '5, 5',
       });
-
-      circle.bindTooltip(
-        `<div style="font-weight: 700; font-size: 11px;">${site.name} • 500m Geofence</div>`,
-        { permanent: false, direction: 'top', className: 'geofence-tooltip' }
-      );
       markersLayer.addLayer(circle);
 
-      // Site Custom HTML Marker Icon (Pure inline styles for 100% reliable rendering)
-      const siteColor = isSelected ? '#1d4ed8' : '#0f172a';
-      const cleanSiteName = site.name.replace('ParkIT – ', '');
-
+      // Site Custom Pin
       const siteHtml = `
         <div style="display: flex; flex-direction: column; align-items: center; width: 140px; cursor: pointer; user-select: none;">
-          <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; box-shadow: 0 4px 8px rgba(0,0,0,0.35); border: 1.5px solid ${isSelected ? '#38bdf8' : '#475569'}; display: flex; align-items: center; gap: 5px; max-width: 135px; white-space: nowrap;">
-            <span style="width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; display: inline-block; flex-shrink: 0;"></span>
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${cleanSiteName}</span>
+          <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 9999px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.25); white-space: nowrap; display: flex; align-items: center; gap: 5px;">
+            <span style="width: 7px; height: 7px; border-radius: 50%; background: #38bdf8;"></span>
+            <span>${site.name.replace('ParkIT – ', '')}</span>
           </div>
-          <div style="width: 32px; height: 32px; border-radius: 50%; background: ${siteColor}; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 900; font-size: 13px; margin-top: 2px;">
+          <div style="width: 30px; height: 30px; border-radius: 50%; background: ${siteColor}; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 900; font-size: 12px; margin-top: 2px;">
             P
           </div>
           <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid ${siteColor};"></div>
@@ -294,45 +296,20 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       const siteIcon = L.divIcon({
         className: 'custom-site-marker',
         html: siteHtml,
-        iconSize: [140, 62],
-        iconAnchor: [70, 62],
-        popupAnchor: [0, -62],
+        iconSize: [140, 58],
+        iconAnchor: [70, 58],
+        popupAnchor: [0, -58],
       });
 
       const siteMarker = L.marker([site.lat, site.lng], { icon: siteIcon });
-
-      const sitePopupHtml = `
-        <div style="padding: 4px; min-width: 220px; font-family: inherit;">
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-            <span style="width: 10px; height: 10px; border-radius: 50%; background: #2563eb; display: inline-block;"></span>
-            <span style="font-weight: 800; font-size: 14px; color: #0f172a;">${site.name}</span>
-          </div>
-          <p style="font-size: 12px; color: #64748b; margin-bottom: 8px;">${site.address || site.gateInfo}</p>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px; margin-bottom: 8px;">
-            <div>
-              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Car Capacity</span>
-              <span style="font-weight: 700; color: #1e293b;">${site.totalCarSlots} bays</span>
-            </div>
-            <div>
-              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Scooter Capacity</span>
-              <span style="font-weight: 700; color: #1e293b;">${site.totalScooterSlots} bays</span>
-            </div>
-            <div>
-              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Geofence</span>
-              <span style="font-weight: 700; color: #2563eb;">500m radius</span>
-            </div>
-            <div>
-              <span style="color: #94a3b8; display: block; font-size: 10px; text-transform: uppercase; font-weight: 700;">Status</span>
-              <span style="font-weight: 700; color: #16a34a;">${site.status}</span>
-            </div>
-          </div>
-          <div style="font-size: 11px; color: #64748b; font-family: monospace;">
-            GPS: ${site.lat.toFixed(4)}°N, ${site.lng.toFixed(4)}°E
-          </div>
+      siteMarker.bindPopup(`
+        <div style="padding: 4px; min-width: 200px; font-family: inherit;">
+          <div style="font-weight: 800; font-size: 13px; color: #0f172a; margin-bottom: 4px;">${site.name}</div>
+          <p style="font-size: 11px; color: #64748b; margin-bottom: 6px;">${site.address || site.gateInfo}</p>
+          <div style="font-size: 11px; color: #1e293b; font-weight: 600;">Capacity: ${site.totalCarSlots} Cars • ${site.totalScooterSlots} Scooters</div>
+          <div style="font-size: 10px; color: #2563eb; font-weight: 700; margin-top: 4px;">500m Security Geofence Active</div>
         </div>
-      `;
-
-      siteMarker.bindPopup(sitePopupHtml);
+      `);
       siteMarker.on('click', () => {
         if (onSelectSite) onSelectSite(site.id);
       });
@@ -340,29 +317,33 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       markersLayer.addLayer(siteMarker);
     });
 
-    // 2. Draw Live Operators
-    filteredOperators.forEach((op) => {
+    // 2. Draw Operators from Database with valid GPS
+    operatorsWithDistance.forEach((op) => {
+      if (!op.hasRealGps || op.computedLat === null || op.computedLng === null) {
+        return;
+      }
       allLatLngs.push([op.computedLat, op.computedLng]);
 
-      // Connecting line from Operator to Assigned Site
-      if (op.assignedSite) {
+      // Connecting line from Operator to Assigned Site (only if assignedSite has real coords)
+      if (op.assignedSite && typeof op.assignedSite.lat === 'number' && typeof op.assignedSite.lng === 'number') {
         const polyline = L.polyline(
           [
             [op.computedLat, op.computedLng],
             [op.assignedSite.lat, op.assignedSite.lng],
           ],
           {
-            color: op.isBreached ? '#dc2626' : '#16a34a',
+            color: op.isBreached ? '#dc2626' : op.isOnline ? '#16a34a' : '#64748b',
             weight: op.isBreached ? 2.5 : 2,
-            opacity: op.isBreached ? 0.9 : 0.7,
-            dashArray: op.isBreached ? '4, 4' : '6, 6',
+            opacity: op.isBreached ? 0.9 : 0.6,
+            dashArray: op.isOnline ? (op.isBreached ? '4, 4' : '6, 6') : '3, 6',
           }
         );
         markersLayer.addLayer(polyline);
       }
 
-      // Operator Custom HTML Marker (Pure inline styles for reliability)
+      // Operator Custom HTML Marker
       const isBreached = op.isBreached;
+      const isOnline = op.isOnline;
       const initials = (op.name || op.username || 'OP')
         .split(' ')
         .map((p) => p[0])
@@ -370,16 +351,21 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
         .join('')
         .toUpperCase();
 
-      const opBg = isBreached ? '#dc2626' : '#16a34a';
-      const opRing = isBreached ? 'rgba(220, 38, 38, 0.35)' : 'rgba(22, 163, 74, 0.3)';
+      const opBg = isBreached ? '#dc2626' : isOnline ? '#16a34a' : '#475569';
+      const opRing = isBreached
+        ? 'rgba(220, 38, 38, 0.35)'
+        : isOnline
+        ? 'rgba(22, 163, 74, 0.3)'
+        : 'rgba(100, 116, 139, 0.3)';
+      const badgeDotColor = isBreached ? '#f87171' : isOnline ? '#4ade80' : '#94a3b8';
 
       const operatorHtml = `
-        <div style="display: flex; flex-direction: column; align-items: center; width: 100px; cursor: pointer; user-select: none;">
-          <div style="position: relative; width: 36px; height: 36px; border-radius: 50%; background: ${opBg}; border: 2.5px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 12px; outline: 3px solid ${opRing};">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 110px; cursor: pointer; user-select: none;">
+          <div style="position: relative; width: 34px; height: 34px; border-radius: 50%; background: ${opBg}; border: 2px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 11px; outline: 3px solid ${opRing};">
             ${initials}
-            <span style="position: absolute; bottom: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: ${isBreached ? '#f87171' : '#4ade80'}; border: 1.5px solid #ffffff;"></span>
+            <span style="position: absolute; bottom: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: ${badgeDotColor}; border: 1.5px solid #ffffff;"></span>
           </div>
-          <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); white-space: nowrap; margin-top: 2px; max-width: 95px; overflow: hidden; text-overflow: ellipsis;">
+          <div style="background: rgba(15, 23, 42, 0.95); color: #ffffff; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 9999px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); white-space: nowrap; margin-top: 2px; max-width: 105px; overflow: hidden; text-overflow: ellipsis;">
             ${op.name}
           </div>
         </div>
@@ -388,411 +374,438 @@ export const OperatorTrackingMap: React.FC<OperatorTrackingMapProps> = ({
       const opIcon = L.divIcon({
         className: 'custom-operator-marker',
         html: operatorHtml,
-        iconSize: [100, 56],
-        iconAnchor: [50, 18],
-        popupAnchor: [0, -20],
+        iconSize: [110, 52],
+        iconAnchor: [55, 17],
+        popupAnchor: [0, -18],
       });
 
       const opMarker = L.marker([op.computedLat, op.computedLng], { icon: opIcon });
 
+      const statusTagBg = isBreached ? '#fee2e2' : isOnline ? '#dcfce7' : '#f1f5f9';
+      const statusTagColor = isBreached ? '#b91c1c' : isOnline ? '#15803d' : '#475569';
+      const statusText = isBreached
+        ? 'BREACHED (>500m)'
+        : isOnline
+        ? 'ONLINE • INSIDE'
+        : `OFFLINE • ${op.lastSeenText}`;
+
+      // Requirement 7: Clickable popup with direct action button to view profile in Operator Management
       const opPopupHtml = `
         <div style="padding: 4px; min-width: 220px; font-family: inherit;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
-            <span style="font-weight: 800; font-size: 14px; color: #0f172a;">${op.name}</span>
-            <span style="font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 9999px; background: ${
-              isBreached ? '#fee2e2' : '#dcfce7'
-            }; color: ${isBreached ? '#b91c1c' : '#15803d'}; border: 1px solid ${
-              isBreached ? '#fecaca' : '#bbf7d0'
-            };">
-              ${isBreached ? 'BREACHED (>500m)' : 'INSIDE GEOFENCE'}
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+            <span style="font-weight: 800; font-size: 13px; color: #0f172a;">${op.name}</span>
+            <span style="font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 9999px; background: ${statusTagBg}; color: ${statusTagColor};">
+              ${statusText}
             </span>
           </div>
 
-          <div style="font-size: 12px; color: #475569; margin-bottom: 8px; line-height: 1.6;">
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: #94a3b8;">Facility:</span>
-              <span style="font-weight: 600; color: #1e293b;">${op.assignedSite?.name || 'Unassigned'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: #94a3b8;">Distance from Site:</span>
-              <span style="font-family: monospace; font-weight: 700; color: ${isBreached ? '#dc2626' : '#16a34a'};">
-                ${op.distanceMeters}m ${isBreached ? '(Outside 500m)' : '(Within radius)'}
-              </span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: #94a3b8;">Shift:</span>
-              <span style="font-weight: 500; color: #1e293b;">${op.shiftTime || 'General'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: #94a3b8;">Contact:</span>
-              <span style="font-family: monospace; color: #1e293b;">${op.contact || 'N/A'}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: #94a3b8;">GPS Ping:</span>
-              <span style="color: #64748b; font-size: 11px;">${op.lastLocationUpdate ? new Date(op.lastLocationUpdate).toLocaleTimeString() : 'Live'}</span>
-            </div>
+          <div style="font-size: 11px; color: #475569; margin-bottom: 6px; line-height: 1.5;">
+            <div>Facility: <strong style="color: #1e293b;">${op.assignedSite?.name || 'Unassigned'}</strong></div>
+            <div>Distance: <strong style="color: ${isBreached ? '#dc2626' : '#16a34a'};">${op.distanceMeters}m</strong> ${isBreached ? '(Outside 500m)' : '(Within radius)'}</div>
+            <div>Phone: <span style="font-family: monospace;">${op.contact || 'N/A'}</span></div>
           </div>
 
-          <div style="font-size: 11px; font-family: monospace; color: #64748b; background: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
-            GPS: ${op.computedLat.toFixed(5)}, ${op.computedLng.toFixed(5)}
-          </div>
+          <button 
+            type="button" 
+            onclick="window.__parkit_view_operator('${op.id}')"
+            style="display: block; width: 100%; text-align: center; margin-top: 6px; padding: 6px 10px; background: #2563eb; color: #ffffff; border-radius: 6px; font-weight: 700; font-size: 11px; border: none; cursor: pointer;"
+          >
+            View Operator Profile →
+          </button>
         </div>
       `;
 
       opMarker.bindPopup(opPopupHtml);
+
+      // Clicking operator pin selects them in the 35% side panel and focuses camera
+      opMarker.on('click', () => {
+        setSelectedOperatorId(op.id);
+      });
+
       markersLayer.addLayer(opMarker);
+      operatorMarkersMapRef.current.set(op.id, opMarker);
     });
 
-  }, [sitesWithCoords, filteredOperators, selectedSiteId, onSelectSite]);
+    // Auto-fit on initial load
+    if (!hasFittedRef.current && allLatLngs.length > 0) {
+      const bounds = L.latLngBounds(allLatLngs);
+      mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      hasFittedRef.current = true;
+    }
+  }, [sitesWithCoords, operatorsWithDistance, selectedSiteId, onSelectSite]);
 
-  // Recenter / Fit All Bounds handler
+  // Recenter / Fit All
   const handleFitAll = () => {
     if (!mapInstanceRef.current) return;
-    const points: [number, number][] = [];
-    sitesWithCoords.forEach((s) => points.push([s.lat, s.lng]));
-    operatorsWithDistance.forEach((o) => points.push([o.computedLat, o.computedLng]));
-
-    if (points.length > 0) {
-      const bounds = L.latLngBounds(points);
-      mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+    const allPoints: [number, number][] = [
+      ...sitesWithCoords.map((s) => [s.lat, s.lng] as [number, number]),
+      ...operatorsWithDistance
+        .filter((o) => o.hasRealGps && o.computedLat !== null && o.computedLng !== null)
+        .map((o) => [o.computedLat!, o.computedLng!] as [number, number]),
+    ];
+    if (allPoints.length > 0) {
+      mapInstanceRef.current.fitBounds(L.latLngBounds(allPoints), {
+        padding: [40, 40],
+        maxZoom: 14,
+      });
+    } else {
+      mapInstanceRef.current.setView([18.5204, 73.8567], 12);
     }
   };
 
-  // Initial one-time fitBounds to encompass all sites & operators nicely
-  useEffect(() => {
-    if (!mapInstanceRef.current || hasFittedRef.current) return;
-    if (sitesWithCoords.length > 0) {
-      const points: [number, number][] = sitesWithCoords.map((s) => [s.lat, s.lng]);
-      operatorsWithDistance.forEach((o) => points.push([o.computedLat, o.computedLng]));
-      if (points.length > 0) {
-        const bounds = L.latLngBounds(points);
-        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-        hasFittedRef.current = true;
+  // Fly to operator when selected in dropdown or by prop
+  const handleSelectOperator = (opId: string) => {
+    setSelectedOperatorId(opId);
+    if (!opId || !mapInstanceRef.current) return;
+    const targetOp = operatorsWithDistance.find((o) => o.id === opId);
+    if (targetOp && targetOp.hasRealGps && targetOp.computedLat !== null && targetOp.computedLng !== null) {
+      mapInstanceRef.current.flyTo([targetOp.computedLat, targetOp.computedLng], 15, {
+        duration: 2.2,
+        easeLinearity: 0.2,
+      });
+      const marker = operatorMarkersMapRef.current.get(targetOp.id);
+      if (marker) {
+        setTimeout(() => marker.openPopup(), 1800);
       }
     }
-  }, [sitesWithCoords, operatorsWithDistance]);
-
-  // Handle explicit site selection changes (only moves camera when site selection actually changes)
-  useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    // Only move camera if selectedSiteId has ACTUALLY changed from previous value
-    if (prevSelectedSiteIdRef.current === selectedSiteId) return;
-    prevSelectedSiteIdRef.current = selectedSiteId;
-
-    if (selectedSiteId && selectedSiteId !== 'all') {
-      const activeSite = sitesWithCoords.find((s) => s.id === selectedSiteId);
-      if (activeSite) {
-        mapInstanceRef.current.flyTo([activeSite.lat, activeSite.lng], 15, {
-          duration: 1.0,
-        });
-      }
-    } else if (selectedSiteId === 'all') {
-      handleFitAll();
-    }
-  }, [selectedSiteId, sitesWithCoords]);
-
-  const handleCopyCoords = () => {
-    if (!clickedCoords) return;
-    const text = `${clickedCoords.lat}, ${clickedCoords.lng}`;
-    navigator.clipboard.writeText(text);
-    setCopiedCoords(true);
-    setTimeout(() => setCopiedCoords(false), 2000);
   };
 
   return (
-    <Card className={`overflow-hidden border border-neutral-200/80 shadow-sm ${className}`}>
-      {/* Header bar with controls */}
-      <div className="p-4 bg-white border-b border-neutral-100 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-blue-400 text-white flex items-center justify-center shadow-md shadow-primary/20">
-            <Radio className="w-5 h-5 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-neutral-900 text-base">
-                Real-Time Operator & Sites Map
-              </h3>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                LIVE REAL MAP
-              </span>
-            </div>
-            <p className="text-xs text-neutral-500 mt-0.5">
-              Interactive OpenStreetMap & CartoDB tiles • Dynamic 500m geofence monitoring & operator telemetry
-            </p>
-          </div>
-        </div>
+    <div
+      className={`w-full rounded-card border border-neutral-200 bg-white shadow-soft overflow-hidden h-[75vh] flex flex-col ${className}`}
+    >
+      {/* Requirement 5: Divided into 2 parts: 65% Map and 35% Details Panel */}
+      <div className="flex flex-col lg:flex-row flex-1 h-full min-h-0 overflow-hidden">
+        {/* Left / Bigger Part: 65% Map Display */}
+        <div className="w-full lg:w-[65%] h-full relative flex flex-col min-h-0">
+          {/* Floating Map Controls Toolbar */}
+          <div className="absolute top-3 left-3 z-[1000] flex flex-wrap items-center gap-1.5 bg-white/95 backdrop-blur-xs p-1.5 rounded-lg border border-neutral-200/90 shadow-md">
+            {/* Tile Layer Selector */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsStyleMenuOpen(!isStyleMenuOpen)}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-neutral-200 rounded-md text-xs font-bold text-neutral-700 hover:bg-neutral-50 shadow-2xs"
+                title="Select Tile Layer"
+              >
+                <Layers className="w-3.5 h-3.5 text-primary" />
+                <span>{TILE_LAYERS[mapStyle].name.split(' ')[0]}</span>
+                <ChevronDown className="w-3 h-3 text-neutral-400" />
+              </button>
 
-        {/* Filter buttons & layer controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Operator Status Filters */}
-          <div className="inline-flex p-1 bg-neutral-100 rounded-lg text-xs font-semibold">
-            <button
-              onClick={() => setActiveFilter('all')}
-              className={`px-3 py-1 rounded-md transition-all ${
-                activeFilter === 'all'
-                  ? 'bg-white text-neutral-900 shadow-sm'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              All ({operatorsWithDistance.length})
-            </button>
-            <button
-              onClick={() => setActiveFilter('inside')}
-              className={`px-3 py-1 rounded-md transition-all flex items-center gap-1 ${
-                activeFilter === 'inside'
-                  ? 'bg-white text-emerald-700 shadow-sm'
-                  : 'text-neutral-600 hover:text-emerald-700'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Inside ({insideCount})
-            </button>
-            <button
-              onClick={() => setActiveFilter('breached')}
-              className={`px-3 py-1 rounded-md transition-all flex items-center gap-1 ${
-                activeFilter === 'breached'
-                  ? 'bg-white text-rose-700 shadow-sm'
-                  : 'text-neutral-600 hover:text-rose-700'
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-              Breached ({breachedCount})
-            </button>
-          </div>
-
-          {/* Layer Selector Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setIsStyleMenuOpen(!isStyleMenuOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-sm"
-              title="Change Map Style"
-            >
-              <Layers className="w-3.5 h-3.5 text-primary" />
-              <span>{TILE_LAYERS[mapStyle].name.split(' ')[0]}</span>
-            </button>
-
-            {isStyleMenuOpen && (
-              <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-neutral-100 py-1.5 z-[1000] text-xs">
-                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                  Select Map Tile Layer
+              {isStyleMenuOpen && (
+                <div className="absolute left-0 mt-1.5 w-56 bg-white rounded-xl shadow-xl border border-neutral-200 py-1.5 z-[1100] text-xs">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                    Map Tile Layer
+                  </div>
+                  {(Object.keys(TILE_LAYERS) as TileLayerStyle[]).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        setMapStyle(key);
+                        setIsStyleMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-neutral-50 ${
+                        mapStyle === key ? 'text-primary font-bold bg-blue-50/60' : 'text-neutral-700'
+                      }`}
+                    >
+                      <span>{TILE_LAYERS[key].name}</span>
+                      {mapStyle === key && <Check className="w-3.5 h-3.5 text-primary" />}
+                    </button>
+                  ))}
                 </div>
-                {(Object.keys(TILE_LAYERS) as TileLayerStyle[]).map((key) => (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setMapStyle(key);
-                      setIsStyleMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-neutral-50 ${
-                      mapStyle === key ? 'text-primary font-bold bg-blue-50/50' : 'text-neutral-700'
-                    }`}
-                  >
-                    <span>{TILE_LAYERS[key].name}</span>
-                    {mapStyle === key && <Check className="w-3.5 h-3.5 text-primary" />}
-                  </button>
-                ))}
-              </div>
+              )}
+            </div>
+
+            {/* Recenter */}
+            <button
+              type="button"
+              onClick={handleFitAll}
+              className="flex items-center gap-1 px-2 py-1 bg-white border border-neutral-200 rounded-md text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-2xs"
+              title="Recenter Map View"
+            >
+              <Crosshair className="w-3.5 h-3.5 text-primary" />
+              <span className="hidden sm:inline">Recenter</span>
+            </button>
+
+            {/* Toggle Radar Sweep */}
+            <button
+              type="button"
+              onClick={() => setIsRadarSweepActive(!isRadarSweepActive)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold border transition-colors shadow-2xs ${
+                isRadarSweepActive
+                  ? 'bg-rose-50 border-rose-200 text-rose-700'
+                  : 'bg-white border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+              }`}
+              title="Toggle Live Radar Sweep Animation"
+            >
+              <Radio className={`w-3.5 h-3.5 ${isRadarSweepActive ? 'animate-pulse text-rose-600' : ''}`} />
+              <span className="hidden sm:inline">Radar</span>
+            </button>
+
+            {/* Add Site Modal trigger */}
+            {onOpenAddSite && (
+              <button
+                type="button"
+                onClick={onOpenAddSite}
+                className="flex items-center gap-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold shadow-2xs transition-colors"
+                title="Add New Parking Site"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Site</span>
+              </button>
             )}
           </div>
 
-          {/* Recenter / Fit All Button */}
-          <button
-            onClick={handleFitAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-sm"
-            title="Fit All Sites & Operators"
-          >
-            <Crosshair className="w-3.5 h-3.5 text-primary" />
-            <span>Recenter</span>
-          </button>
-        </div>
-      </div>
+          {/* Radar Line Sweep Simulation Effect */}
+          {isRadarSweepActive && (
+            <div className="absolute inset-0 pointer-events-none z-[400] overflow-hidden opacity-30">
+              <div className="w-[200%] h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent absolute top-1/2 left-[-50%] transform -translate-y-1/2 rotate-[25deg] animate-pulse"></div>
+            </div>
+          )}
 
-      {/* Geofence Breach Banner if any operators are breached */}
-      {breachedCount > 0 && (
-        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 flex items-center justify-between text-xs text-rose-800">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 animate-bounce" />
-            <span className="font-bold">
-              {breachedCount} {breachedCount === 1 ? 'Operator' : 'Operators'} currently beyond assigned 500m geofence radius!
-            </span>
-            <span className="text-rose-600 hidden sm:inline">• Immediate admin review recommended</span>
-          </div>
-          <button
-            onClick={() => setActiveFilter('breached')}
-            className="font-bold text-rose-700 hover:underline"
-          >
-            View Breaches →
-          </button>
-        </div>
-      )}
-
-      {/* Real Interactive Map Canvas */}
-      <div className="relative">
-        <div
-          ref={mapContainerRef}
-          style={{ height: '480px', width: '100%', zIndex: 1 }}
-          className="bg-neutral-100"
-        />
-
-        {/* Floating Map Legend Overlay */}
-        <div className="absolute top-3 left-3 z-[400] bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-neutral-200/80 p-3 text-xs space-y-2 pointer-events-auto max-w-[240px]">
-          <div className="font-bold text-neutral-900 flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-primary" />
-            <span>Live Radar Legend</span>
-          </div>
-          <div className="space-y-1.5 text-[11px]">
-            <div className="flex items-center gap-2 text-neutral-700">
-              <span className="w-3 h-3 rounded-full bg-emerald-500 shadow"></span>
-              <span>Operator (Inside Geofence)</span>
-            </div>
-            <div className="flex items-center gap-2 text-neutral-700">
-              <span className="w-3 h-3 rounded-full bg-rose-500 shadow animate-pulse"></span>
-              <span>Operator (Breached &gt;500m)</span>
-            </div>
-            <div className="flex items-center gap-2 text-neutral-700">
-              <span className="w-4 h-4 rounded-full bg-primary text-white font-bold text-[9px] flex items-center justify-center">P</span>
-              <span>Parking Facility Pin</span>
-            </div>
-            <div className="flex items-center gap-2 text-neutral-700">
-              <span className="w-3.5 h-0.5 border-b-2 border-dashed border-primary"></span>
-              <span>500m Geofence Boundary</span>
-            </div>
-          </div>
+          {/* Leaflet Map Div */}
+          <div ref={mapContainerRef} className="w-full h-full flex-1" />
         </div>
 
-        {/* Coordinates Inspector Banner (Triggered by clicking map) */}
-        {clickedCoords && (
-          <div className="absolute bottom-3 left-3 right-3 sm:left-auto sm:right-3 z-[400] bg-neutral-900/90 backdrop-blur-md text-white rounded-xl shadow-xl border border-neutral-700 p-2.5 px-3 flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <Crosshair className="w-4 h-4 text-primary animate-spin" />
+        {/* Vertical Divider Line between 65% and 35% */}
+        <div className="hidden lg:block w-px bg-neutral-200 h-full shrink-0" />
+
+        {/* Right / Smaller Part: 35% Details & Controls Panel */}
+        <div className="w-full lg:w-[35%] h-full flex flex-col justify-between bg-neutral-50/70 border-t lg:border-t-0 border-neutral-200 overflow-y-auto p-4 space-y-4">
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
               <div>
-                <span className="text-neutral-400 text-[10px] block font-semibold uppercase">Map Clicked GPS Point</span>
-                <span className="font-mono font-bold text-white">
-                  {clickedCoords.lat}° N, {clickedCoords.lng}° E
-                </span>
+                <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 text-primary animate-pulse" />
+                  <span>Live Operator Radar & Geofence</span>
+                </h3>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  Real-time GPS positioning & boundary telemetry
+                </p>
               </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-primary border border-blue-200">
+                {operatorsWithDistance.length} {operatorsWithDistance.length === 1 ? 'Operator' : 'Operators'}
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopyCoords}
-                className="px-2.5 py-1 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-all"
-              >
-                {copiedCoords ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedCoords ? 'Copied!' : 'Copy Coords'}</span>
-              </button>
-              <button
-                onClick={() => setClickedCoords(null)}
-                className="text-neutral-400 hover:text-white text-xs px-1"
-              >
-                ✕
-              </button>
+
+            {/* Requirement 2: Operator Selector Dropdown */}
+            <div className="space-y-1.5">
+              <label htmlFor="operator-select" className="block text-xs font-bold text-neutral-700">
+                Select Operator to Inspect:
+              </label>
+              {operatorsWithDistance.length === 0 ? (
+                <div className="p-2.5 rounded-control bg-white border border-neutral-200 text-xs text-neutral-500 text-center">
+                  No operators registered in database
+                </div>
+              ) : (
+                <div className="relative">
+                  <select
+                    id="operator-select"
+                    value={selectedOperatorId}
+                    onChange={(e) => handleSelectOperator(e.target.value)}
+                    className="w-full appearance-none bg-white text-neutral-900 text-xs font-semibold rounded-control border border-neutral-200 hover:border-neutral-300 focus:border-primary px-3 py-2 cursor-pointer pr-8 shadow-2xs"
+                  >
+                    <option value="">-- View All Operators on Map --</option>
+                    {operatorsWithDistance.map((op) => (
+                      <option key={op.id} value={op.id}>
+                        {op.name} (@{op.username}) — {op.isBreached ? 'BREACHED' : op.isOnline ? 'ONLINE' : 'OFFLINE'}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-neutral-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* On-Duty Operator Live Telemetry Audit Table */}
-      <div className="p-4 bg-neutral-50/70 border-t border-neutral-100">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Navigation className="w-4 h-4 text-primary" />
-            <h4 className="font-bold text-neutral-900 text-xs">
-              Live Operator Telemetry & Geofence Audit
-            </h4>
-          </div>
-          <span className="text-[11px] text-neutral-400 font-medium">
-            Syncing in real time • Auto-refreshes every 5s
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {operatorsWithDistance.map((op) => (
-            <div
-              key={op.id}
-              className={`p-3 rounded-xl border bg-white transition-all shadow-sm flex flex-col justify-between ${
-                op.isBreached
-                  ? 'border-rose-300 ring-1 ring-rose-300/40 bg-rose-50/20'
-                  : 'border-neutral-200 hover:border-primary/40'
-              }`}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
+            {/* Selected Operator Detailed Card */}
+            {selectedOperator ? (
+              <div
+                className={`p-3.5 rounded-card border bg-white shadow-xs space-y-3 transition-all ${
+                  selectedOperator.isBreached
+                    ? 'border-rose-300 bg-rose-50/20 ring-1 ring-rose-200'
+                    : 'border-neutral-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white ${
-                        op.isBreached ? 'bg-rose-600' : 'bg-emerald-600'
+                      className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white shrink-0 ${
+                        selectedOperator.isBreached
+                          ? 'bg-rose-600'
+                          : selectedOperator.isOnline
+                          ? 'bg-emerald-600'
+                          : 'bg-slate-500'
                       }`}
                     >
-                      {(op.name || op.username || 'OP').substring(0, 2).toUpperCase()}
+                      {(selectedOperator.name || selectedOperator.username || 'OP').substring(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <h5 className="font-bold text-neutral-900 text-xs">{op.name}</h5>
-                      <span className="text-[11px] text-neutral-400">@{op.username}</span>
+                      <h4 className="font-bold text-neutral-900 text-xs leading-tight">
+                        {selectedOperator.name}
+                      </h4>
+                      <span className="text-[11px] text-neutral-500 font-mono">
+                        @{selectedOperator.username}
+                      </span>
                     </div>
                   </div>
+
                   <span
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      op.isBreached
-                        ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                        : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                      selectedOperator.isBreached
+                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                        : selectedOperator.isOnline
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200'
                     }`}
                   >
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
-                        op.isBreached ? 'bg-rose-600 animate-ping' : 'bg-emerald-500'
+                        selectedOperator.isBreached
+                          ? 'bg-rose-600 animate-ping'
+                          : selectedOperator.isOnline
+                          ? 'bg-emerald-500'
+                          : 'bg-slate-400'
                       }`}
                     ></span>
-                    {op.isBreached ? 'BREACHED' : 'INSIDE'}
+                    {selectedOperator.isBreached ? 'BREACHED' : selectedOperator.isOnline ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
 
-                <div className="space-y-1 text-xs text-neutral-600 pt-1 border-t border-neutral-100">
+                <div className="space-y-1.5 text-xs pt-2 border-t border-neutral-100">
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400 text-[11px]">Facility:</span>
-                    <span className="font-semibold text-neutral-800 text-[11px] truncate max-w-[130px]">
-                      {op.assignedSite?.name || 'Unassigned'}
-                    </span>
+                    <span className="text-neutral-500">Assigned Facility:</span>
+                    <strong className="text-neutral-900 font-semibold truncate max-w-[170px]">
+                      {selectedOperator.assignedSite?.name || 'Unassigned'}
+                    </strong>
                   </div>
+
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400 text-[11px]">Distance from Site:</span>
+                    <span className="text-neutral-500">Distance from Center:</span>
                     <span
-                      className={`font-mono font-bold text-[11px] ${
-                        op.isBreached ? 'text-rose-600' : 'text-emerald-600'
+                      className={`font-mono font-bold ${
+                        !selectedOperator.hasRealGps
+                          ? 'text-slate-400'
+                          : selectedOperator.isBreached
+                          ? 'text-rose-600'
+                          : selectedOperator.isOnline
+                          ? 'text-emerald-600'
+                          : 'text-slate-600'
                       }`}
                     >
-                      {op.distanceMeters}m {op.isBreached ? '(Beyond 500m)' : '(Within 500m)'}
+                      {selectedOperator.hasRealGps ? (
+                        <>
+                          {selectedOperator.distanceMeters}m{' '}
+                          {selectedOperator.isBreached ? '(Outside 500m)' : '(Within 500m)'}
+                        </>
+                      ) : (
+                        'No GPS telemetry'
+                      )}
                     </span>
                   </div>
+
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400 text-[11px]">Shift:</span>
-                    <span className="text-neutral-600 text-[11px]">{op.shiftTime || 'General'}</span>
+                    <span className="text-neutral-500">Last Telemetry:</span>
+                    <span className="text-neutral-700 font-medium">
+                      {selectedOperator.isOnline ? 'Live Active' : selectedOperator.lastSeenText}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-500">Phone:</span>
+                    <span className="font-mono text-neutral-700">{selectedOperator.contact || 'N/A'}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-500">GPS Coordinates:</span>
+                    <span className="font-mono text-[10px] text-neutral-600">
+                      {selectedOperator.hasRealGps &&
+                      selectedOperator.computedLat !== null &&
+                      selectedOperator.computedLng !== null ? (
+                        `${selectedOperator.computedLat.toFixed(4)}°N, ${selectedOperator.computedLng.toFixed(4)}°E`
+                      ) : (
+                        <span className="text-amber-600 font-semibold">Awaiting device GPS fix</span>
+                      )}
+                    </span>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-3 pt-2 border-t border-neutral-100 flex items-center justify-between text-[11px]">
-                <span className="text-neutral-400 font-mono">
-                  {op.computedLat.toFixed(4)}, {op.computedLng.toFixed(4)}
-                </span>
+                {/* Requirement 7: Button to redirect to operator's profile in Operator Management */}
                 <button
-                  onClick={() => {
-                    if (mapInstanceRef.current) {
-                      mapInstanceRef.current.flyTo([op.computedLat, op.computedLng], 16, {
-                        duration: 1.2,
-                      });
-                    }
-                  }}
-                  className="font-bold text-primary hover:underline flex items-center gap-1"
+                  type="button"
+                  onClick={() => navigate(`/operators/${selectedOperator.id}`)}
+                  className="w-full py-2 px-3 rounded-control bg-primary hover:bg-primary-dark text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer mt-2"
                 >
-                  <Eye className="w-3 h-3" />
-                  <span>Locate</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>View Operator Profile & History →</span>
                 </button>
               </div>
+            ) : operatorsWithDistance.length > 0 ? (
+              <div className="p-3 bg-white rounded-card border border-neutral-200 text-xs text-neutral-600 space-y-1.5">
+                <div className="font-bold text-neutral-800">Network Fleet Summary:</div>
+                <div className="text-[11px] text-neutral-500">
+                  {operatorsWithDistance.filter((o) => o.isOnline).length} Active Online •{' '}
+                  {operatorsWithDistance.filter((o) => !o.isOnline).length} Offline •{' '}
+                  {operatorsWithDistance.filter((o) => o.isBreached).length} Geofence Breaches
+                </div>
+                <p className="text-[11px] text-neutral-400 pt-1">
+                  Click any operator marker on the map or select from the dropdown above to view live telemetry.
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 bg-white rounded-card border border-neutral-200 text-center space-y-2">
+                <User className="w-8 h-8 text-neutral-300 mx-auto" />
+                <div className="text-xs font-bold text-neutral-700">No Operators Registered</div>
+                <p className="text-[11px] text-neutral-400">
+                  There are currently no operator accounts in the database. Add operators in the Operator Management section.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/operators')}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-control bg-primary hover:bg-primary-dark text-white text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                >
+                  Go to Operator Management
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Requirement 4: Clean, Professional Index / Map Legend */}
+          <div className="pt-3 border-t border-neutral-200 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+              Map Index
             </div>
-          ))}
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-600">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-blue-600 border border-white shadow-2xs"></span>
+                <span>Parking Facility</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full border border-dashed border-blue-500 bg-blue-50"></span>
+                <span>500m Geofence</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Operator Online</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                <span>Operator Offline</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                <span>Geofence Breach</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-4 h-0.5 bg-rose-400 border-t border-dashed border-rose-500"></span>
+                <span>Radar Sweep</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </Card>
+    </div>
   );
 };
