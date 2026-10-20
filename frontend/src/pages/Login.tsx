@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
-import { Car, Lock, User, AlertCircle, ShieldAlert, KeyRound, ShieldCheck } from 'lucide-react';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
+import { Car, Lock, User, AlertCircle, ShieldAlert, KeyRound, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
 import { Input, PasswordInput } from '../components/common/Input';
@@ -85,6 +85,17 @@ export const Login: React.FC = () => {
   return (
     <div className="min-h-screen w-full bg-neutral-50 flex flex-col justify-center items-center p-4 sm:p-6">
       <div className="w-full max-w-[400px] space-y-6">
+        {/* Back to Home link */}
+        <div>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-500 hover:text-primary transition"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Home</span>
+          </Link>
+        </div>
+
         {/* Facility Branding */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-white shadow-elevated mb-1">
