@@ -1,0 +1,61 @@
+# Production Docker Compose Override for ParkIT
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  db:
+    restart: always
+    # In production, do NOT expose database port to public host interfaces
+    ports: !reset []
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+        reservations:
+          memory: 256M
+
+  backend:
+    restart: always
+    # Backend runs behind frontend/nginx or load balancer; only publish on localhost if needed
+    ports: !reset
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      RUN_MIGRATIONS: "true"
+      RUN_SEED: "false" # In production, avoid re-seeding default credentials on reboot
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+        reservations:
+          memory: 256M
+
+  frontend:
+    restart: always
+    # Expose standard HTTP/HTTPS ports
+    ports: !reset
+      - "80:80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M

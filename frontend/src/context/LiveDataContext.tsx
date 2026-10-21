@@ -1,0 +1,857 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  ReactNode,
+  useMemo,
+} from 'react';
+import { useLocation } from 'react-router-dom';
+import {
+  Site,
+  AvailabilityData,
+  ParkingSlot,
+  ParkingSession,
+  DeactivationEvent,
+  RateItem,
+  RateHistoryItem,
+  OperatorAccount,
+  QuickAlert,
+  VehicleCategory,
+  SlotStatus,
+} from '../types';
+import { api } from '../api/client';
+import { useAuth } from './AuthContext';
+
+// ─── API response shapes ─────────────────────────────────────────────────────
+
+interface ApiSite {
+  id: string;
+  name: string;
+  address: string;
+  gateInfo: string;
+  totalCarSlots: number;
+  totalScooterSlots: number;
+  defaultCarRate: number;
+  defaultScooterRate: number;
+  status: string;
+  code: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+interface ApiSlot {
+  id: string;
+  siteId: string;
+  category: string;
+  locationCode: string;
+  status: string;
+  currentVehicleNumber?: string;
+  currentSessionId?: string;
+  deactivationReason?: string;
+  deactivatedAt?: string;
+  deactivatedBy?: string;
+}
+
+interface ApiSession {
+  id: string;
+  siteId: string;
+  siteName: string;
+  vehicleNumber: string;
+  category: string;
+  slotId: string;
+  inTime: string;
+  outTime?: string | null;
+  durationMinutes?: number | null;
+  amount?: number | null;
+  rateApplied?: number;
+  status: string;
+  voidReason?: string | null;
+  voidedAt?: string | null;
+  voidedBy?: string | null;
+}
+
+interface ApiRate {
+  id: string;
+  siteId: string;
+  category: string;
+  hourlyRate: number;
+  lastUpdatedAt: string;
+  lastUpdatedBy: string;
+}
+
+interface ApiRateHistory {
+  id: string;
+  siteId: string;
+  date: string;
+  category: string;
+  oldRate: number;
+  newRate: number;
+  changedBy: string;
+}
+
+interface ApiOperator {
+  id: string;
+  name: string;
+  username: string;
+  contact: string;
+  email?: string;
+  employeeId?: string;
+  shiftTime?: string;
+  notes?: string;
+  assignedSiteId: string;
+  assignedSiteName: string;
+  status: string;
+  dateAdded: string;
+  authMethod: string;
+  sessionsProcessedCount: number;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocationUpdate?: string | null;
+  geofenceStatus?: string;
+  isOnline?: boolean;
+  connectionStatus?: 'ONLINE' | 'OFFLINE';
+  reassignmentHistory: {
+    id: string;
+    operatorId: string;
+    fromSiteId: string;
+    fromSiteName: string;
+    toSiteId: string;
+    toSiteName: string;
+    reassignedBy: string;
+    reassignedAt: string;
+    reason?: string;
+  }[];
+}
+
+// ─── Mappers ─────────────────────────────────────────────────────────────────
+
+function mapSite(a: ApiSite): Site {
+  return {
+    id: a.id,
+    name: a.name,
+    address: a.address,
+    gateInfo: a.gateInfo,
+    totalCarSlots: a.totalCarSlots,
+    totalScooterSlots: a.totalScooterSlots,
+    defaultCarRate: a.defaultCarRate,
+    defaultScooterRate: a.defaultScooterRate,
+    status: a.status === 'Active' ? 'Active' : 'Coming Soon',
+    latitude: typeof a.latitude === 'number' ? a.latitude : undefined,
+    longitude: typeof a.longitude === 'number' ? a.longitude : undefined,
+  };
+}
+
+function mapSlot(a: ApiSlot): ParkingSlot {
+  return {
+    id: a.id,
+    siteId: a.siteId,
+    category: (a.category === 'CAR' || a.category === 'Car') ? 'Car' : 'Scooter',
+    locationCode: a.locationCode,
+    status: (a.status === 'VACANT' || a.status === 'Vacant')
+      ? 'Vacant'
+      : (a.status === 'OCCUPIED' || a.status === 'Occupied')
+      ? 'Occupied'
+      : 'Deactivated',
+    currentVehicleNumber: a.currentVehicleNumber,
+    currentSessionId: a.currentSessionId,
+    deactivationReason: a.deactivationReason,
+    deactivatedAt: a.deactivatedAt,
+    deactivatedBy: a.deactivatedBy,
+  };
+}
+
+function mapSession(a: ApiSession): ParkingSession {
+  let status: 'Active' | 'Completed' | 'Voided' = 'Completed';
+  if (a.status === 'Active' || a.status === 'ACTIVE') {
+    status = 'Active';
+  } else if (a.status === 'VOIDED' || a.status === 'Voided') {
+    status = 'Voided';
+  }
+
+  return {
+    id: a.id,
+    siteId: a.siteId,
+    siteName: a.siteName,
+    vehicleNumber: a.vehicleNumber,
+    category: (a.category === 'Car' || a.category === 'CAR') ? 'Car' : 'Scooter',
+    slotId: a.slotId,
+    inTime: a.inTime,
+    outTime: a.outTime,
+    durationMinutes: a.durationMinutes,
+    amount: a.amount,
+    status,
+    rateApplied: a.rateApplied,
+    voidReason: a.voidReason,
+    voidedAt: a.voidedAt,
+    voidedBy: a.voidedBy,
+  };
+}
+
+function mapRate(a: ApiRate): RateItem {
+  return {
+    id: a.id,
+    siteId: a.siteId,
+    category: (a.category === 'CAR' || a.category === 'Car') ? 'Car' : 'Scooter',
+    hourlyRate: a.hourlyRate,
+    lastUpdatedAt: a.lastUpdatedAt,
+    lastUpdatedBy: a.lastUpdatedBy,
+  };
+}
+
+function mapRateHistory(a: ApiRateHistory): RateHistoryItem {
+  return {
+    id: a.id,
+    siteId: a.siteId,
+    date: a.date,
+    category: (a.category === 'CAR' || a.category === 'Car') ? 'Car' : 'Scooter',
+    oldRate: a.oldRate,
+    newRate: a.newRate,
+    changedBy: a.changedBy,
+  };
+}
+
+function mapOperator(a: ApiOperator): OperatorAccount {
+  return {
+    id: a.id,
+    name: a.name,
+    username: a.username,
+    contact: a.contact,
+    email: a.email ?? '',
+    employeeId: a.employeeId ?? '',
+    shiftTime: a.shiftTime ?? 'General Shift',
+    notes: a.notes ?? '',
+    assignedSiteId: a.assignedSiteId,
+    status: a.status === 'Active' ? 'Active' : 'Terminated',
+    dateAdded: a.dateAdded,
+    authMethod: a.authMethod ?? 'Password',
+    sessionsProcessedCount: a.sessionsProcessedCount,
+    lastLatitude: a.lastLatitude,
+    lastLongitude: a.lastLongitude,
+    lastLocationUpdate: a.lastLocationUpdate,
+    geofenceStatus: a.geofenceStatus ?? 'INSIDE',
+    isOnline: a.isOnline,
+    connectionStatus: a.connectionStatus ?? (a.isOnline ? 'ONLINE' : 'OFFLINE'),
+    reassignmentHistory: (a.reassignmentHistory ?? []).map((r) => ({
+      id: r.id,
+      operatorId: r.operatorId,
+      fromSiteId: r.fromSiteId,
+      fromSiteName: r.fromSiteName,
+      toSiteId: r.toSiteId,
+      toSiteName: r.toSiteName,
+      reassignedBy: r.reassignedBy,
+      reassignedAt: r.reassignedAt,
+      reason: r.reason,
+    })),
+  };
+}
+
+// ─── Context type ─────────────────────────────────────────────────────────────
+
+interface LiveDataContextType {
+  sites: Site[];
+  currentSiteId: string;
+  currentSite: Site;
+  setCurrentSiteId: (siteId: string) => void;
+  addSite: (site: Omit<Site, 'id'>) => Promise<Site>;
+  updateSite: (siteId: string, updates: Partial<Omit<Site, 'id'>>) => Promise<Site>;
+  availability: AvailabilityData;
+  allSlots: ParkingSlot[];
+  slots: ParkingSlot[];
+  allSessions: ParkingSession[];
+  sessions: ParkingSession[];
+  rates: RateItem[];
+  rateHistory: RateHistoryItem[];
+  deactivationEvents: DeactivationEvent[];
+  operators: OperatorAccount[];
+  alerts: QuickAlert[];
+  isFacilityFull: boolean;
+  hasRecentUpdate: boolean;
+  isLoading: boolean;
+  // Kept for compatibility — simulation removed, these are no-ops
+  simulationActive: boolean;
+  setSimulationActive: (active: boolean) => void;
+  toggleFacilityFullSimulation: () => void;
+  simulateEntry: (category?: VehicleCategory) => void;
+  simulateExit: (category?: VehicleCategory) => void;
+  updateSlotStatus: (slotId: string, status: SlotStatus, deactivationReason?: string) => void;
+  reassignSlotCategory: (slotId: string, newCategory: VehicleCategory) => void;
+  addSlot: (slot: Omit<ParkingSlot, 'currentVehicleNumber' | 'currentSessionId'>) => boolean;
+  updateRate: (category: VehicleCategory, newRate: number, adminName: string) => void;
+  addOperator: (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => Promise<OperatorAccount>;
+  updateOperator: (operatorId: string, data: Partial<{ name: string; contact: string; email: string; employeeId: string; shiftTime: string; notes: string; password: string }>) => Promise<void>;
+  reassignOperatorSite: (operatorId: string, newSiteId: string, reason?: string) => void;
+  terminateOperator: (operatorId: string) => void;
+  reactivateOperator: (operatorId: string, siteId: string, reason?: string) => Promise<void>;
+  deleteOperator: (operatorId: string) => Promise<void>;
+  voidSession: (sessionId: string, reason: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  dismissAlert: (alertId: string) => void;
+  refresh: () => void;
+}
+
+const LiveDataContext = createContext<LiveDataContextType | undefined>(undefined);
+
+const FALLBACK_SITE: Site = {
+  id: '',
+  name: 'No Facility Configured',
+  address: 'Add your first parking facility to get started',
+  gateInfo: '',
+  totalCarSlots: 0,
+  totalScooterSlots: 0,
+  defaultCarRate: 0,
+  defaultScooterRate: 0,
+  status: 'Active',
+};
+
+export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
+  const isKioskRoute = location.pathname.startsWith('/display');
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [currentSiteId, setCurrentSiteIdState] = useState<string>(() => {
+    return localStorage.getItem('sp_selected_site') || 'all';
+  });
+
+  const setCurrentSiteId = useCallback((id: string) => {
+    localStorage.setItem('sp_selected_site', id);
+    setCurrentSiteIdState(id);
+  }, []);
+
+  const [allSlots, setAllSlots] = useState<ParkingSlot[]>([]);
+  const [allSessions, setAllSessions] = useState<ParkingSession[]>([]);
+  const [allRates, setAllRates] = useState<RateItem[]>([]);
+  const [allRateHistory, setAllRateHistory] = useState<RateHistoryItem[]>([]);
+  const [deactivationEvents, setDeactivationEvents] = useState<DeactivationEvent[]>([]);
+  const [operators, setOperators] = useState<OperatorAccount[]>([]);
+  const [alerts, setAlerts] = useState<QuickAlert[]>([]);
+  const [hasRecentUpdate, setHasRecentUpdate] = useState(false);
+  const [isFacilityFull] = useState(false);
+  const [simulationActive] = useState(false);
+  const refreshRef = useRef(0);
+
+  const triggerFlash = useCallback(() => {
+    setHasRecentUpdate(true);
+    const t = setTimeout(() => setHasRecentUpdate(false), 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  // ── Load all data from API ──────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setIsLoading(true);
+    try {
+      const [sitesRaw, slotsRaw, sessionsRaw, ratesRaw, rateHistoryRaw, operatorsRaw] =
+        await Promise.all([
+          api.get<ApiSite[]>('/sites'),
+          api.get<ApiSlot[]>('/slots'),
+          api.get<ApiSession[]>('/sessions?limit=200'),
+          api.get<ApiRate[]>('/rates'),
+          api.get<ApiRateHistory[]>('/rates/history'),
+          api.get<ApiOperator[]>('/operators'),
+        ]);
+
+      const mappedSites = sitesRaw.map(mapSite);
+      setSites(mappedSites);
+      setAllSlots(slotsRaw.map(mapSlot));
+      setAllSessions(sessionsRaw.map(mapSession));
+      setAllRates(ratesRaw.map(mapRate));
+      setAllRateHistory(rateHistoryRaw.map(mapRateHistory));
+      setOperators(operatorsRaw.map(mapOperator));
+
+      // Preserve 'all' view or user-selected site; default to first active facility or 'all'
+      setCurrentSiteIdState((prev) => {
+        if (prev === 'all') return 'all';
+        if (prev && mappedSites.some((s) => s.id === prev)) return prev;
+        const saved = localStorage.getItem('sp_selected_site');
+        if (saved === 'all') return 'all';
+        if (saved && mappedSites.some((s) => s.id === saved)) return saved;
+        return mappedSites[0]?.id ?? 'all';
+      });
+    } catch (err) {
+      console.error('[LiveData] Failed to load data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  // Initial load + periodic real-time sync every 5s + immediate re-sync on tab focus
+  useEffect(() => {
+    loadAll();
+    const interval = setInterval(() => {
+      loadAll();
+      triggerFlash();
+    }, 5_000);
+
+    const handleFocus = () => {
+      loadAll();
+      triggerFlash();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [loadAll, triggerFlash, refreshRef.current]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refresh = useCallback(() => {
+    refreshRef.current += 1;
+    loadAll();
+    triggerFlash();
+  }, [loadAll, triggerFlash]);
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+
+  const ALL_SITES_META: Site = useMemo(() => {
+    const totalCars = sites.reduce((sum, s) => sum + (s.totalCarSlots || 0), 0);
+    const totalScooters = sites.reduce((sum, s) => sum + (s.totalScooterSlots || 0), 0);
+    return {
+      id: 'all',
+      name: 'All Parking Sites (Combined)',
+      address: `${sites.length} Active Parking Facilities`,
+      gateInfo: 'Network-wide Multi-Site Overview',
+      totalCarSlots: totalCars,
+      totalScooterSlots: totalScooters,
+      defaultCarRate: 30,
+      defaultScooterRate: 15,
+      status: 'Active',
+    };
+  }, [sites]);
+
+  const currentSite = useMemo(() => {
+    if (currentSiteId === 'all') return ALL_SITES_META;
+    return sites.find((s) => s.id === currentSiteId) || sites[0] || FALLBACK_SITE;
+  }, [sites, currentSiteId, ALL_SITES_META]);
+
+  const slots = useMemo(() => {
+    if (currentSiteId === 'all') return allSlots;
+    return allSlots.filter((s) => s.siteId === currentSiteId);
+  }, [allSlots, currentSiteId]);
+
+  const sessions = useMemo(() => {
+    if (currentSiteId === 'all') return allSessions;
+    return allSessions.filter((s) => s.siteId === currentSiteId);
+  }, [allSessions, currentSiteId]);
+
+  const rates = useMemo(() => {
+    if (currentSiteId === 'all') return allRates;
+    return allRates.filter((r) => r.siteId === currentSiteId);
+  }, [allRates, currentSiteId]);
+
+  const rateHistory = useMemo(() => {
+    if (currentSiteId === 'all') return allRateHistory;
+    return allRateHistory.filter((rh) => rh.siteId === currentSiteId);
+  }, [allRateHistory, currentSiteId]);
+
+  const availability: AvailabilityData = useMemo(() => {
+    const carSlots = slots.filter((s) => s.category === 'Car');
+    const scooterSlots = slots.filter((s) => s.category === 'Scooter');
+    const carAvailable = carSlots.filter((s) => s.status === 'Vacant').length;
+    const scooterAvailable = scooterSlots.filter((s) => s.status === 'Vacant').length;
+    return {
+      carAvailable,
+      carTotal: carSlots.length,
+      scooterAvailable,
+      scooterTotal: scooterSlots.length,
+      totalAvailable: carAvailable + scooterAvailable,
+      totalSlots: slots.length,
+      updatedAt: new Date().toISOString(),
+    };
+  }, [slots]);
+
+  // ── Mutations (call API then refresh local state) ──────────────────────────
+
+  const addSite = useCallback(
+    async (newSiteData: Omit<Site, 'id'>): Promise<Site> => {
+      const created = await api.post<ApiSite>('/sites', newSiteData);
+      const site = mapSite(created);
+
+      // Re-fetch all sites and newly auto-generated slots so state is 100% in sync
+      try {
+        const [updatedSites, updatedSlots] = await Promise.all([
+          api.get<ApiSite[]>('/sites'),
+          api.get<ApiSlot[]>('/slots'),
+        ]);
+        setSites(updatedSites.map(mapSite));
+        setAllSlots(updatedSlots.map(mapSlot));
+      } catch (err) {
+        console.error('[LiveData] Failed to reload slots after addSite:', err);
+        setSites((prev) => [...prev, site]);
+      }
+
+      setCurrentSiteId(site.id);
+      triggerFlash();
+      return site;
+    },
+    [triggerFlash, setCurrentSiteId]
+  );
+
+  const updateSite = useCallback(
+    async (siteId: string, updates: Partial<Omit<Site, 'id'>>): Promise<Site> => {
+      const updated = await api.put<ApiSite>(`/sites/${encodeURIComponent(siteId)}`, updates);
+      const site = mapSite(updated);
+      setSites((prev) => prev.map((s) => (s.id === siteId ? site : s)));
+      triggerFlash();
+      return site;
+    },
+    [triggerFlash]
+  );
+
+  const updateSlotStatus = useCallback(
+    (slotId: string, status: SlotStatus, deactivationReason?: string) => {
+      // Optimistic update
+      const nowStr = new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      setAllSlots((prev) =>
+        prev.map((s) =>
+          s.id === slotId
+            ? {
+                ...s,
+                status,
+                deactivationReason: status === 'Deactivated' ? deactivationReason : undefined,
+                deactivatedAt: status === 'Deactivated' ? nowStr : undefined,
+                deactivatedBy: status === 'Deactivated' ? 'Admin' : undefined,
+                currentVehicleNumber: status === 'Deactivated' ? undefined : s.currentVehicleNumber,
+                currentSessionId: status === 'Deactivated' ? undefined : s.currentSessionId,
+              }
+            : s
+        )
+      );
+
+      if (status === 'Deactivated') {
+        const newEvent: DeactivationEvent = {
+          id: 'deact-' + Date.now(),
+          slotId,
+          siteId: currentSiteId,
+          action: 'deactivate',
+          reason: deactivationReason || 'Administrative maintenance deactivation',
+          actionedBy: 'Admin',
+          actionedAt: nowStr,
+        };
+        setDeactivationEvents((prev) => [newEvent, ...prev]);
+      } else if (status === 'Vacant') {
+        const newEvent: DeactivationEvent = {
+          id: 'react-' + Date.now(),
+          slotId,
+          siteId: currentSiteId,
+          action: 'reactivate',
+          reason: 'Slot verified and returned to service',
+          actionedBy: 'Admin',
+          actionedAt: nowStr,
+        };
+        setDeactivationEvents((prev) => [newEvent, ...prev]);
+      }
+
+      // Sync to backend
+      const apiStatus = status === 'Vacant' ? 'VACANT' : status === 'Occupied' ? 'OCCUPIED' : 'DEACTIVATED';
+      api
+        .patch(`/slots/${slotId}/status`, { status: apiStatus, deactivationReason })
+        .catch((err) => console.error('[LiveData] updateSlotStatus failed:', err));
+
+      triggerFlash();
+    },
+    [currentSiteId, triggerFlash]
+  );
+
+  const reassignSlotCategory = useCallback(
+    (slotId: string, newCategory: VehicleCategory) => {
+      setAllSlots((prev) =>
+        prev.map((s) =>
+          s.id === slotId ? { ...s, category: newCategory } : s
+        )
+      );
+      const apiCategory = newCategory === 'Car' ? 'CAR' : 'SCOOTER';
+      api
+        .patch(`/slots/${slotId}/category`, { slotType: apiCategory })
+        .catch((err) => console.error('[LiveData] reassignSlotCategory failed:', err));
+      triggerFlash();
+    },
+    [triggerFlash]
+  );
+
+  const addSlot = useCallback(
+    (slot: Omit<ParkingSlot, 'currentVehicleNumber' | 'currentSessionId'>): boolean => {
+      const exists = allSlots.some(
+        (s) => s.locationCode.toLowerCase() === slot.locationCode.toLowerCase() && s.siteId === slot.siteId
+      );
+      if (exists) return false;
+      const apiCategory = slot.category === 'Car' ? 'CAR' : 'SCOOTER';
+      api
+        .post<ApiSlot>('/slots', {
+          locationCode: slot.locationCode,
+          locationId: slot.siteId,
+          slotType: apiCategory,
+        })
+        .then((created) => {
+          setAllSlots((prev) => [...prev, mapSlot(created)]);
+          triggerFlash();
+        })
+        .catch((err) => console.error('[LiveData] addSlot failed:', err));
+      return true;
+    },
+    [allSlots, triggerFlash]
+  );
+
+  const updateRate = useCallback(
+    (category: VehicleCategory, newRate: number, adminName: string) => {
+      const existing = rates.find((r) => r.category === category);
+      const oldRate = existing?.hourlyRate ?? 0;
+      const nowStr = new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      // Optimistic update
+      setAllRates((prev) =>
+        prev.map((r) =>
+          r.category === category && r.siteId === currentSiteId
+            ? { ...r, hourlyRate: newRate, lastUpdatedAt: nowStr, lastUpdatedBy: adminName }
+            : r
+        )
+      );
+
+      const newHistoryItem: RateHistoryItem = {
+        id: 'hist-' + Date.now(),
+        siteId: currentSiteId,
+        date: nowStr,
+        category,
+        oldRate,
+        newRate,
+        changedBy: adminName,
+      };
+      setAllRateHistory((prev) => [newHistoryItem, ...prev]);
+
+      // Sync to backend
+      const apiCategory = category === 'Car' ? 'CAR' : 'SCOOTER';
+      api
+        .post('/rates', {
+          siteId: currentSiteId,
+          vehicleType: apiCategory,
+          ratePerHour: newRate,
+          updatedBy: adminName,
+        })
+        .catch((err) => console.error('[LiveData] updateRate failed:', err));
+    },
+    [rates, currentSiteId]
+  );
+
+  const addOperator = useCallback(
+    async (operatorData: { name: string; username: string; contact: string; assignedSiteId: string; password?: string; email?: string; employeeId?: string; shiftTime?: string; notes?: string }) => {
+      const created = await api.post<ApiOperator>('/operators', operatorData);
+      const mapped = mapOperator(created);
+      setOperators((prev) => [mapped, ...prev]);
+      triggerFlash();
+      await loadAll();
+      return mapped;
+    },
+    [triggerFlash, loadAll]
+  );
+
+  const updateOperator = useCallback(
+    async (operatorId: string, data: Partial<{ name: string; contact: string; email: string; employeeId: string; shiftTime: string; notes: string; password: string }>) => {
+      const updated = await api.put<ApiOperator>(`/operators/${operatorId}`, data);
+      setOperators((prev) => prev.map((op) => (op.id === operatorId ? mapOperator(updated) : op)));
+      triggerFlash();
+    },
+    [triggerFlash]
+  );
+
+  const reassignOperatorSite = useCallback(
+    (operatorId: string, newSiteId: string, reason?: string) => {
+      api
+        .post(`/operators/${operatorId}/reassign`, { newSiteId, reason })
+        .then(() => {
+          const toSite = sites.find((s) => s.id === newSiteId || (s as any).code === newSiteId);
+          const nowStr = new Date().toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+          setOperators((prev) =>
+            prev.map((op) => {
+              if (op.id !== operatorId) return op;
+              const fromSite = sites.find((s) => s.id === op.assignedSiteId);
+              const reassignment = {
+                id: 'rh-' + Date.now(),
+                operatorId,
+                fromSiteId: op.assignedSiteId,
+                fromSiteName: fromSite?.name ?? 'Previous Site',
+                toSiteId: newSiteId,
+                toSiteName: toSite?.name ?? newSiteId,
+                reassignedBy: 'Admin',
+                reassignedAt: nowStr,
+                reason: reason ?? 'Operational shift allocation',
+              };
+              return {
+                ...op,
+                assignedSiteId: newSiteId,
+                lastLatitude: toSite?.latitude ?? op.lastLatitude,
+                lastLongitude: toSite?.longitude ?? op.lastLongitude,
+                lastLocationUpdate: new Date().toISOString(),
+                geofenceStatus: 'INSIDE',
+                reassignmentHistory: [reassignment, ...op.reassignmentHistory],
+              };
+            })
+          );
+          triggerFlash();
+          loadAll();
+        })
+        .catch((err) => console.error('[LiveData] reassignOperatorSite failed:', err));
+    },
+    [sites, triggerFlash, loadAll]
+  );
+
+  const terminateOperator = useCallback(
+    (operatorId: string) => {
+      api
+        .patch(`/operators/${operatorId}/terminate`, {})
+        .then(() => {
+          setOperators((prev) =>
+            prev.map((op) => (op.id === operatorId ? { ...op, status: 'Terminated' } : op))
+          );
+          triggerFlash();
+        })
+        .catch((err) => console.error('[LiveData] terminateOperator failed:', err));
+    },
+    [triggerFlash]
+  );
+
+  const reactivateOperator = useCallback(
+    async (operatorId: string, siteId: string, reason?: string) => {
+      await api.post(`/operators/${operatorId}/reactivate`, { siteId, reason });
+      await loadAll();
+      triggerFlash();
+    },
+    [loadAll, triggerFlash]
+  );
+
+  const deleteOperator = useCallback(
+    async (operatorId: string) => {
+      await api.delete(`/operators/${operatorId}`);
+      setOperators((prev) => prev.filter((op) => op.id !== operatorId));
+      triggerFlash();
+    },
+    [triggerFlash]
+  );
+
+  const voidSession = useCallback(
+    async (sessionId: string, reason: string) => {
+      await api.post(`/sessions/${sessionId}/void`, { reason });
+      setAllSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== sessionId) return s;
+          return {
+            ...s,
+            status: 'Voided',
+            voidReason: reason,
+            voidedAt: new Date().toISOString(),
+          };
+        })
+      );
+      setAllSlots((sPrev) => {
+        const target = allSessions.find((s) => s.id === sessionId);
+        if (target && target.status === 'Active') {
+          return sPrev.map((sl) =>
+            sl.locationCode === target.slotId || sl.id === target.slotId
+              ? { ...sl, status: 'Vacant', currentVehicleNumber: undefined, currentSessionId: undefined }
+              : sl
+          );
+        }
+        return sPrev;
+      });
+      triggerFlash();
+    },
+    [allSessions, triggerFlash]
+  );
+
+  const deleteSession = useCallback(
+    async (sessionId: string) => {
+      await voidSession(sessionId, 'Direct cancellation by administrator');
+    },
+    [voidSession]
+  );
+
+  const dismissAlert = useCallback((alertId: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+  }, []);
+
+  // No-op simulation stubs (removed — data is live from backend)
+  const setSimulationActive = useCallback(() => {}, []);
+  const toggleFacilityFullSimulation = useCallback(() => {}, []);
+  const simulateEntry = useCallback(() => {}, []);
+  const simulateExit = useCallback(() => {}, []);
+
+  return (
+    <LiveDataContext.Provider
+      value={{
+        sites,
+        currentSiteId,
+        currentSite,
+        setCurrentSiteId,
+        addSite,
+        updateSite,
+        availability,
+        allSlots,
+        slots,
+        allSessions,
+        sessions,
+        rates,
+        rateHistory,
+        deactivationEvents,
+        operators,
+        alerts,
+        isFacilityFull,
+        hasRecentUpdate,
+        isLoading,
+        simulationActive,
+        setSimulationActive,
+        toggleFacilityFullSimulation,
+        simulateEntry,
+        simulateExit,
+        updateSlotStatus,
+        reassignSlotCategory,
+        addSlot,
+        updateRate,
+        addOperator,
+        updateOperator,
+        reassignOperatorSite,
+        terminateOperator,
+        reactivateOperator,
+        deleteOperator,
+        voidSession,
+        deleteSession,
+        dismissAlert,
+        refresh,
+      }}
+    >
+      {children}
+    </LiveDataContext.Provider>
+  );
+};
+
+export const useLiveData = (): LiveDataContextType => {
+  const context = useContext(LiveDataContext);
+  if (!context) {
+    throw new Error('useLiveData must be used within a LiveDataProvider');
+  }
+  return context;
+};
+
+// Re-export for convenience
+export type { LiveDataContextType };
