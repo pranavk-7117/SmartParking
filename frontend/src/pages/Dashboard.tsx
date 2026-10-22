@@ -71,8 +71,22 @@ export const Dashboard: React.FC = () => {
   }, [currentSiteId]);
 
   // Today's completed sessions for current scope (single site or all combined)
+  // Helper to determine if a date string falls on the current calendar day
+  const isTodaySession = (dateStr?: string | null): boolean => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
+  // Today's completed sessions for current scope (single site or all combined)
   const todayCompleted = useMemo(() => {
-    return sessions.filter((s) => s.status === 'Completed');
+    return sessions.filter((s) => s.status === 'Completed' && isTodaySession(s.outTime || s.inTime));
   }, [sessions]);
 
   // Real today's revenue calculated strictly from DB session bills
@@ -104,7 +118,7 @@ export const Dashboard: React.FC = () => {
     return sites.map((st) => {
       const siteSlots = allSlots.filter((sl) => sl.siteId === st.id);
       const siteSessions = allSessions.filter((ss) => ss.siteId === st.id);
-      const siteCompleted = siteSessions.filter((ss) => ss.status === 'Completed');
+      const siteCompleted = siteSessions.filter((ss) => ss.status === 'Completed' && isTodaySession(ss.outTime || ss.inTime));
       const siteRevenue = siteCompleted.reduce((sum, ss) => sum + (ss.amount || 0), 0);
 
       const carSlots = siteSlots.filter((sl) => sl.category === 'Car');

@@ -9,14 +9,35 @@ export interface PasswordValidationResult {
 // Hash of dummy password "ParkIT#DummyPassword!2026"
 const DUMMY_HASH = '$2a$12$e8Yk2e.n.9W.M9e.l4SqeOS65U8N8c2pU0jN8iU0KzQY.o9kM2sSu';
 
+// Known demo passwords that must never be used or chosen in production
+const FORBIDDEN_DEMO_PASSWORDS = [
+  'admin123',
+  'admin1234',
+  'password',
+  'password123',
+  '12345678',
+  'change_me_admin_password',
+  'parkit@123',
+  'operator@123',
+  'admin@123'
+];
+
 /**
  * Validates password complexity:
  * - Admin: min 10 characters, at least 1 uppercase, 1 lowercase, 1 digit, 1 symbol
  * - Operator / default: min 8 characters, at least 1 uppercase, 1 lowercase, 1 digit, 1 symbol
+ * - Rejects known demo and default passwords
  */
 export function validatePassword(password: string, role: string = 'operator'): PasswordValidationResult {
   if (!password || typeof password !== 'string') {
     return { valid: false, error: 'Password is required' };
+  }
+
+  if (FORBIDDEN_DEMO_PASSWORDS.includes(password.trim().toLowerCase())) {
+    return {
+      valid: false,
+      error: 'Cannot use default or demo credentials. Please choose a unique, strong password.',
+    };
   }
 
   const isAdmin = role.toLowerCase() === 'admin';

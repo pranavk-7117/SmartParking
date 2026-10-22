@@ -6,34 +6,34 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting ParkIT clean Day-0 database initialization (Zero mock data)...');
 
-  // ONLY provision the SuperAdmin account
+  // ONLY provision the SuperAdmin account if it does not already exist
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'change_me_admin_password';
-  const adminHash = await bcrypt.hash(adminPassword, 12);
-
-  await prisma.adminUser.upsert({
+  const existingAdmin = await prisma.adminUser.findUnique({
     where: { username: adminUsername },
-    update: {
-      passwordHash: adminHash,
-      role: AdminRole.ADMIN,
-      status: 'Active',
-      locationId: null,
-      tokenVersion: 1,
-      mustChangePassword: false,
-    },
-    create: {
-      username: adminUsername,
-      name: 'ParkIT SuperAdmin',
-      passwordHash: adminHash,
-      role: AdminRole.ADMIN,
-      status: 'Active',
-      authMethod: 'Password',
-      locationId: null,
-      tokenVersion: 1,
-      mustChangePassword: false,
-    },
   });
-  console.log(`✅ SuperAdmin account provisioned: ${adminUsername}`);
+
+  if (existingAdmin) {
+    console.log(`ℹ️ Admin account "${adminUsername}" already exists. Preserving existing password and credentials.`);
+  } else {
+    const adminInitialPassword = process.env.ADMIN_INITIAL_PASSWORD || 'admin123';
+    const adminHash = await bcrypt.hash(adminInitialPassword, 12);
+
+    await prisma.adminUser.create({
+      data: {
+        username: adminUsername,
+        name: 'ParkIT SuperAdmin',
+        passwordHash: adminHash,
+        role: AdminRole.ADMIN,
+        status: 'Active',
+        authMethod: 'Password',
+        locationId: null,
+        tokenVersion: 1,
+        mustChangePassword: true, // Forces password change on initial login
+      },
+    });
+    console.log(`✅ SuperAdmin account provisioned: ${adminUsername} (mustChangePassword: true)`);
+  }
+
   console.log('🎉 Clean Day-0 database ready: 0 mock sites, 0 mock operators, 0 mock sessions.');
 }
 

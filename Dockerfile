@@ -1,9 +1,9 @@
-# ── Stage 1: Builder ──────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS builder
+# -- Stage 1: Builder ----------------------------------------------------------
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Install openssl for Prisma CLI & engine compatibility
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Install openssl for Prisma CLI & engine compatibility (Alpine uses apk)
+RUN apk add --no-cache openssl ca-certificates
 
 # Install dependencies
 COPY package*.json ./
@@ -25,15 +25,15 @@ RUN npm run build
 # Prune devDependencies (prisma stays because it is in dependencies)
 RUN npm prune --omit=dev
 
-# ── Stage 2: Production Runner ────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS runner
+# -- Stage 2: Production Runner ------------------------------------------------
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
 # Install runtime dependencies required by Prisma engine
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl ca-certificates
 
 # Copy built application and production dependencies with node user ownership
 COPY --chown=node:node --from=builder /app/node_modules ./node_modules
@@ -42,7 +42,8 @@ COPY --chown=node:node --from=builder /app/prisma ./prisma
 COPY --chown=node:node package.json ./
 COPY --chown=node:node docker-entrypoint.sh ./
 
-RUN chmod +x docker-entrypoint.sh
+# Ensure Unix line endings (guards against CRLF from Windows hosts)
+RUN sed -i 's/\r//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 # Least-privilege runtime security
 USER node

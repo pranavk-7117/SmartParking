@@ -59,8 +59,32 @@ class SecureSessionManager(context: Context) {
 
     fun isLoggedIn(): Boolean = !getAuthToken().isNullOrBlank()
 
+    fun getServerUrl(): String {
+        val saved = sharedPreferences.getString(KEY_SERVER_URL, null)
+        return if (!saved.isNullOrBlank()) {
+            if (saved.endsWith("/")) saved else "$saved/"
+        } else {
+            com.example.smartparkingoperator.BuildConfig.API_BASE_URL
+        }
+    }
+
+    fun setServerUrl(url: String) {
+        val trimmed = url.trim()
+        val normalized = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "http://$trimmed"
+        }.let { if (it.endsWith("/")) it else "$it/" }
+
+        sharedPreferences.edit().putString(KEY_SERVER_URL, normalized).apply()
+    }
+
     fun clearSession() {
+        val serverUrl = sharedPreferences.getString(KEY_SERVER_URL, null)
         sharedPreferences.edit().clear().apply()
+        if (serverUrl != null) {
+            sharedPreferences.edit().putString(KEY_SERVER_URL, serverUrl).apply()
+        }
     }
 
     companion object {
@@ -70,5 +94,6 @@ class SecureSessionManager(context: Context) {
         private const val KEY_OPERATOR_USERNAME = "operator_username"
         private const val KEY_OPERATOR_ROLE = "operator_role"
         private const val KEY_MUST_CHANGE_PASSWORD = "must_change_password"
+        private const val KEY_SERVER_URL = "custom_server_base_url"
     }
 }

@@ -112,10 +112,32 @@ fun HomeScreen(
     val activeSessions by parkingRepository.getActiveSessions().collectAsState(initial = emptyList())
     val isOnline by connectivityObserver.observe().collectAsState(initial = connectivityObserver.isConnected())
     val pendingCount by parkingRepository.getPendingActionCount().collectAsState(initial = 0)
+    val persistedSummary by parkingRepository.getPersistedTodaySummary().collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val locationTracker = remember { LocationTracker(context) }
     var isManualRefreshing by remember { mutableStateOf(false) }
+
+    // Runtime permission launcher for operator live location tracking
+    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true) {
+            locationTracker.startListening()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!locationTracker.hasLocationPermission()) {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
 
     // Real backend live metrics & announcements
     var todayStats by remember { mutableStateOf<TodaySummaryDto?>(null) }
@@ -145,11 +167,7 @@ fun HomeScreen(
                 if (realGps != null) {
                     parkingRepository.reportLocation(latitude = realGps.latitude, longitude = realGps.longitude)
                 } else {
-                    // Fallback to location coordinates if GPS is not yet acquired
-                    val currentLocCode = location?.code ?: "site-camp"
-                    val fallbackLat = if (currentLocCode == "site-hadapsar") 18.5089 else if (currentLocCode == "site-kothrud") 18.5074 else 18.5133
-                    val fallbackLng = if (currentLocCode == "site-hadapsar") 73.9259 else if (currentLocCode == "site-kothrud") 73.8077 else 73.8784
-                    parkingRepository.reportLocation(latitude = fallbackLat, longitude = fallbackLng)
+                    locationTracker.startListening()
                 }
             } catch (_: Exception) {}
             delay(5000)
@@ -165,10 +183,10 @@ fun HomeScreen(
 
     val currencyFormat = NumberFormat.getNumberInstance(Locale.US)
 
-    val liveEntries = todayStats?.entries ?: 0
-    val liveExits = todayStats?.exits ?: 0
-    val liveCurrentlyParked = todayStats?.currentlyParked ?: activeSessions.size
-    val liveRevenue = todayStats?.todayRevenue ?: 0
+    val liveEntries = todayStats?.entries ?: persistedSummary?.entries ?: 0
+    val liveExits = todayStats?.exits ?: persistedSummary?.exits ?: 0
+    val liveCurrentlyParked = todayStats?.currentlyParked ?: persistedSummary?.currentlyParked ?: activeSessions.size
+    val liveRevenue = todayStats?.todayRevenue ?: persistedSummary?.todayRevenue ?: 0
 
     Column(
         modifier = modifier
@@ -355,7 +373,7 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.width(2.dp))
                                 Text(
-                                    text = "Primary Gate • Today, 09 Oct",
+                                    text = "Primary Gate • Today, ${SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())}",
                                     fontSize = 10.5.sp,
                                     color = TextMuted
                                 )

@@ -27,9 +27,10 @@ const entrySchema = z.object({
  * Records a vehicle entry with full idempotency guarantee.
  * Operator-only: scoped to their assigned location.
  *
- * Security hardening (Part B):
+ * Security hardening:
  *  - Enforces operator is assigned to requested location_id (403 on mismatch)
  *  - Validates device_timestamp bounds (≤5 min future, ≤24 h past)
+ *  - Validates vehicle does not already have an active parking session (409)
  *  - Slot resolution and status update are fully atomic inside the transaction
  *    to prevent TOCTOU double-allocation race conditions
  */
@@ -84,7 +85,21 @@ entriesRouter.post('/', requireAuth, async (req, res, next) => {
         update: {},
       });
 
-      // 2. Resolve slot inside the transaction
+      // 2. Validate that vehicle is not already parked in an active session
+      const activeForVehicle = await tx.parkingSession.findFirst({
+        where: {
+          vehicleId: v.id,
+          status:    SessionStatus.ACTIVE,
+        },
+      });
+      if (activeForVehicle) {
+        throw new AppError(
+          `Vehicle ${body.vehicle_number} already has an active parking session (${activeForVehicle.id})`,
+          409
+        );
+      }
+
+      // 3. Resolve slot inside the transaction
       let resolvedSlot;
       if (body.slot_id) {
         // Operator specified a slot — find it, validate status in the same tx
@@ -113,13 +128,13 @@ entriesRouter.post('/', requireAuth, async (req, res, next) => {
         if (!resolvedSlot) throw new AppError(`No vacant ${body.vehicle_type} slot available`, 409);
       }
 
-      // 3. Mark slot OCCUPIED (inside tx — atomic with session creation)
+      // 4. Mark slot OCCUPIED (inside tx — atomic with session creation)
       await tx.slot.update({
         where: { id: resolvedSlot.id },
         data:  { status: SlotStatus.OCCUPIED },
       });
 
-      // 4. Create session (id = idempotency_key for deterministic replay)
+      // 5. Create session (id = idempotency_key for deterministic replay)
       const s = await tx.parkingSession.create({
         data: {
           id:        body.idempotency_key,
@@ -129,6 +144,14 @@ entriesRouter.post('/', requireAuth, async (req, res, next) => {
           status:    SessionStatus.ACTIVE,
         },
       });
+
+      // 6. Increment operator's sessions processed count
+      if (req.user?.id) {
+        await tx.adminUser.update({
+          where: { id: req.user.id },
+          data: { sessionsProcessedCount: { increment: 1 } },
+        });
+      }
 
       return [s, v, resolvedSlot];
     });

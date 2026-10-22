@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Plus, MapPin, AlertCircle, Compass } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
@@ -21,8 +21,8 @@ export const AddSiteModal: React.FC<AddSiteModalProps> = ({ isOpen, onClose, onS
   const [gateInfo, setGateInfo] = useState('');
   const [totalCarSlots, setTotalCarSlots] = useState('40');
   const [totalScooterSlots, setTotalScooterSlots] = useState('20');
-  const [defaultCarRate, setDefaultCarRate] = useState('30');
-  const [defaultScooterRate, setDefaultScooterRate] = useState('15');
+  const [defaultCarRate, setDefaultCarRate] = useState('');
+  const [defaultScooterRate, setDefaultScooterRate] = useState('');
   
   // Coordinates state (only requested if automatic dynamic geocoding fails — NO mock data)
   const [latitude, setLatitude] = useState('');
@@ -46,8 +46,8 @@ export const AddSiteModal: React.FC<AddSiteModalProps> = ({ isOpen, onClose, onS
 
     if (isNaN(carCount) || carCount < 0) newErrors.carSlots = 'Must be 0 or more';
     if (isNaN(scooterCount) || scooterCount < 0) newErrors.scooterSlots = 'Must be 0 or more';
-    if (isNaN(carRate) || carRate < 0) newErrors.carRate = 'Must be a valid rate';
-    if (isNaN(scooterRate) || scooterRate < 0) newErrors.scooterRate = 'Must be a valid rate';
+    if (isNaN(carRate) || carRate <= 0) newErrors.carRate = 'Hourly car parking rate must be greater than ₹0';
+    if (isNaN(scooterRate) || scooterRate <= 0) newErrors.scooterRate = 'Hourly scooter parking rate must be greater than ₹0';
 
     let resolvedLat: number | null = null;
     let resolvedLng: number | null = null;
@@ -124,8 +124,8 @@ export const AddSiteModal: React.FC<AddSiteModalProps> = ({ isOpen, onClose, onS
       setGateInfo('');
       setTotalCarSlots('40');
       setTotalScooterSlots('20');
-      setDefaultCarRate('30');
-      setDefaultScooterRate('15');
+      setDefaultCarRate('');
+      setDefaultScooterRate('');
       setLatitude('');
       setLongitude('');
       setNeedsManualCoords(false);
@@ -281,3 +281,4 @@ export const AddSiteModal: React.FC<AddSiteModalProps> = ({ isOpen, onClose, onS
     </Modal>
   );
 };
+

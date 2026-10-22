@@ -54,7 +54,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, ses
   const ticketCode = `PK-${session.id.slice(0, 8).toUpperCase()}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-xs overflow-y-auto">
       <div className="relative bg-white rounded-card shadow-modal border border-neutral-200 w-full max-w-md overflow-hidden animate-scale-up">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-neutral-100 bg-neutral-50/70">

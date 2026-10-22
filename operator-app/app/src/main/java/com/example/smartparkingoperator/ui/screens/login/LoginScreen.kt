@@ -2,6 +2,8 @@ package com.example.smartparkingoperator.ui.screens.login
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,11 +22,18 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LocalParking
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -32,7 +41,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,9 +62,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.smartparkingoperator.data.repository.AuthRepository
+import com.example.smartparkingoperator.data.security.SecureSessionManager
 import com.example.smartparkingoperator.theme.AppBackground
 import com.example.smartparkingoperator.theme.AppSurface
 import com.example.smartparkingoperator.theme.BorderDivider
@@ -69,6 +83,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(
     authRepository: AuthRepository,
+    sessionManager: SecureSessionManager,
     onLoginSuccess: (mustChangePassword: Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -77,6 +92,8 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showServerConfigDialog by remember { mutableStateOf(false) }
+    var currentServerUrl by remember { mutableStateOf(sessionManager.getServerUrl()) }
 
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -96,7 +113,7 @@ fun LoginScreen(
                         val mustChange = authRepository.mustChangePassword()
                         onLoginSuccess(mustChange)
                     },
-                    onFailure = { err -> errorMessage = err.localizedMessage ?: "Login failed. Check credentials." }
+                    onFailure = { err -> errorMessage = err.localizedMessage ?: "Login failed. Check server IP or credentials." }
                 )
             }
         }
@@ -139,87 +156,71 @@ fun LoginScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(PrimaryAccent, PrimaryAccentDark)
-                            )
-                        ),
+                        .size(70.dp)
+                        .clip(CircleShape)
+                        .background(PrimaryAccent),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.LocalParking,
-                        contentDescription = null,
+                        contentDescription = "ParkIT Logo",
                         tint = Color.White,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(40.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = "ParkIT",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextPrimary,
                 letterSpacing = (-0.5).sp
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Operator Terminal",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                fontWeight = FontWeight.Normal
+            )
 
-            // Operator badge
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PrimaryAccent.copy(alpha = 0.1f))
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "OPERATOR PORTAL",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = PrimaryAccent,
-                    letterSpacing = 1.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // ── Login Card ────────────────────────────────────────────────────
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White)
+                    .background(AppSurface)
                     .border(1.dp, BorderDivider, RoundedCornerShape(16.dp))
-                    .padding(horizontal = 20.dp, vertical = 24.dp)
+                    .padding(24.dp)
             ) {
                 Text(
-                    text = "Sign in to your account",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    text = "Sign In",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
 
                 Text(
-                    text = "Enter your operator credentials below",
+                    text = "Enter your operator credentials to continue",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
-                    modifier = Modifier.padding(top = 2.dp)
+                    modifier = Modifier.padding(top = 2.dp, bottom = 20.dp)
                 )
-
-                Spacer(modifier = Modifier.height(20.dp))
 
                 // Username field
                 OutlinedTextField(
                     value = username,
                     onValueChange = {
                         username = it
-                        errorMessage = null
+                        if (errorMessage != null) errorMessage = null
                     },
-                    label = { Text("Username", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text("Username") },
+                    placeholder = { Text("e.g. operator") },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Person,
@@ -233,18 +234,14 @@ fun LoginScreen(
                         keyboardType = KeyboardType.Text,
                         imeAction = ImeAction.Next
                     ),
-                    shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PrimaryAccent,
                         unfocusedBorderColor = BorderDivider,
                         focusedLabelColor = PrimaryAccent,
                         unfocusedLabelColor = TextSecondary,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        cursorColor = PrimaryAccent,
-                        focusedContainerColor = Color(0xFFF8FAFF),
-                        unfocusedContainerColor = AppSurface,
+                        cursorColor = PrimaryAccent
                     ),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -255,9 +252,10 @@ fun LoginScreen(
                     value = password,
                     onValueChange = {
                         password = it
-                        errorMessage = null
+                        if (errorMessage != null) errorMessage = null
                     },
-                    label = { Text("Password", style = MaterialTheme.typography.labelMedium) },
+                    label = { Text("Password") },
+                    placeholder = { Text("••••••••") },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Lock,
@@ -276,25 +274,21 @@ fun LoginScreen(
                             )
                         }
                     },
-                    singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(onDone = { handleLogin() }),
-                    shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PrimaryAccent,
                         unfocusedBorderColor = BorderDivider,
                         focusedLabelColor = PrimaryAccent,
                         unfocusedLabelColor = TextSecondary,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        cursorColor = PrimaryAccent,
-                        focusedContainerColor = Color(0xFFF8FAFF),
-                        unfocusedContainerColor = AppSurface,
+                        cursorColor = PrimaryAccent
                     ),
+                    shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -344,7 +338,38 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Dynamic Server URL Configuration Chip ───────────────────────
+            Surface(
+                onClick = { showServerConfigDialog = true },
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderDivider),
+                shadowElevation = 1.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Dns,
+                        contentDescription = "Server Settings",
+                        tint = PrimaryAccent,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Server: $currentServerUrl",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Footer note
             Text(
@@ -358,6 +383,109 @@ fun LoginScreen(
             // Bottom flexible spacer
             Spacer(modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // ── Server Connection Configuration Dialog ──────────────────────────
+        if (showServerConfigDialog) {
+            var inputUrl by remember { mutableStateOf(currentServerUrl) }
+
+            Dialog(onDismissRequest = { showServerConfigDialog = false }) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                tint = PrimaryAccent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Server Connection",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = TextPrimary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "If your laptop's Wi-Fi IP changes, enter the new IP here. The app connects instantly without reinstalling.",
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            lineHeight = 17.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        OutlinedTextField(
+                            value = inputUrl,
+                            onValueChange = { inputUrl = it },
+                            label = { Text("Server URL or IP") },
+                            placeholder = { Text("e.g. 10.20.2.242:3000") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Quick presets
+                        Text(
+                            text = "Quick Presets:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            AssistChip(
+                                onClick = { inputUrl = "http://192.168.1.42:3000/" },
+                                label = { Text("Current Wi-Fi", fontSize = 11.sp) }
+                            )
+                            AssistChip(
+                                onClick = { inputUrl = "http://127.0.0.1:3000/" },
+                                label = { Text("USB (127.0.0.1)", fontSize = 11.sp) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { showServerConfigDialog = false }) {
+                                Text("Cancel", color = TextSecondary)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    if (inputUrl.isNotBlank()) {
+                                        sessionManager.setServerUrl(inputUrl)
+                                        currentServerUrl = sessionManager.getServerUrl()
+                                        errorMessage = null
+                                    }
+                                    showServerConfigDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryAccent),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Save Connection")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

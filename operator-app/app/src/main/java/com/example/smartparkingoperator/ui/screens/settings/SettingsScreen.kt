@@ -1,5 +1,12 @@
 package com.example.smartparkingoperator.ui.screens.settings
 
+import android.Manifest
+import android.bluetooth.BluetoothDevice
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings as AndroidSettings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Email
@@ -29,8 +37,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +50,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -53,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -60,6 +74,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.smartparkingoperator.data.printer.BluetoothPrinterManager
 import com.example.smartparkingoperator.data.repository.AuthRepository
 import com.example.smartparkingoperator.data.repository.ParkingRepository
 import com.example.smartparkingoperator.theme.AppBackground
@@ -81,23 +96,24 @@ import kotlinx.coroutines.launch
  * Settings & Profile Screen
  *
  * Allows the operator to:
- * 1. View and edit their profile (name, username, phone, email, employee ID, shift time, notes)
- * 2. Change their password with current password verification
- * All changes are persisted immediately to the backend via PUT /api/v1/auth/profile
- * and POST /api/v1/auth/change-password.
+ * 1. View and edit profile details
+ * 2. Change password securely
+ * 3. Connect, configure, and test ESC/POS Bluetooth thermal printers
  */
 @Composable
 fun SettingsScreen(
     authRepository: AuthRepository,
     parkingRepository: ParkingRepository,
+    printerManager: BluetoothPrinterManager? = null,
     onNavigateBack: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Section tabs
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Profile, 1 = Security
+    // Section tabs: 0 = Profile, 1 = Security, 2 = Printer
+    var selectedTab by remember { mutableStateOf(0) }
 
     // Profile fields
     var profileName by remember { mutableStateOf("") }
@@ -116,13 +132,31 @@ fun SettingsScreen(
     var showNewPass by remember { mutableStateOf(false) }
     var showConfirmPass by remember { mutableStateOf(false) }
 
+    // Printer states
+    var pairedDevices by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
+    var isConnectingPrinter by remember { mutableStateOf(false) }
+    var isTestingPrinter by remember { mutableStateOf(false) }
+
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        if (printerManager?.hasBluetoothPermissions() == true) {
+            pairedDevices = printerManager.getPairedDevices()
+        }
+    }
+
+    fun refreshPrinterDevices() {
+        if (printerManager?.hasBluetoothPermissions() == true) {
+            pairedDevices = printerManager.getPairedDevices()
+        }
+    }
+
     // State
     var isLoading by remember { mutableStateOf(false) }
     var isProfileLoaded by remember { mutableStateOf(false) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Location info
     val operatorUsername = authRepository.getOperatorUsername()
 
     // Load profile on entry
@@ -140,6 +174,14 @@ fun SettingsScreen(
         }
         isProfileLoaded = true
         isLoading = false
+    }
+
+    LaunchedEffect(selectedTab) {
+        successMessage = null
+        errorMessage = null
+        if (selectedTab == 2) {
+            refreshPrinterDevices()
+        }
     }
 
     Column(
@@ -165,13 +207,13 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = "Settings & Profile",
+                    text = "Settings & Device",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "Manage your account",
+                    text = "Account & Thermal Printer",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -197,25 +239,25 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(PrimaryAccent.copy(alpha = 0.05f))
-                    .padding(vertical = 20.dp),
+                    .padding(vertical = 18.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(68.dp)
                             .clip(CircleShape)
                             .background(PrimaryAccent),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = (profileName.ifBlank { operatorUsername }).take(1).uppercase(),
+                            text = (profileName.ifBlank { operatorUsername ?: "O" }).take(1).uppercase(),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Black,
                             color = Color.White
                         )
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = profileName.ifBlank { operatorUsername ?: "Operator" },
                         style = MaterialTheme.typography.titleMedium,
@@ -251,7 +293,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Tab Selector ──────────────────────────────────────────────────
+            // ── Tab Selector (Profile, Security, Printer) ─────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -259,14 +301,14 @@ fun SettingsScreen(
                     .background(SurfaceHover, RoundedCornerShape(10.dp))
                     .padding(4.dp)
             ) {
-                listOf("Profile", "Security").forEachIndexed { idx, label ->
+                listOf("Profile", "Security", "Printer").forEachIndexed { idx, label ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (selectedTab == idx) AppBackground else Color.Transparent)
                             .clickable { selectedTab = idx }
-                            .padding(vertical = 10.dp),
+                            .padding(vertical = 9.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -336,7 +378,6 @@ fun SettingsScreen(
                 // ── PROFILE TAB ───────────────────────────────────────────────
                 0 -> {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-
                         SettingsSectionHeader("Personal Information")
 
                         SettingsField(
@@ -443,10 +484,8 @@ fun SettingsScreen(
                 // ── SECURITY TAB ──────────────────────────────────────────────
                 1 -> {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-
                         SettingsSectionHeader("Change Password")
 
-                        // Info card
                         Card(
                             colors = CardDefaults.cardColors(containerColor = PrimaryAccent.copy(alpha = 0.06f)),
                             shape = RoundedCornerShape(10.dp),
@@ -475,7 +514,6 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Current password
                         PasswordField(
                             label = "Current Password",
                             value = currentPassword,
@@ -486,7 +524,6 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // New password
                         PasswordField(
                             label = "New Password",
                             value = newPassword,
@@ -497,7 +534,6 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Confirm new password
                         PasswordField(
                             label = "Confirm New Password",
                             value = confirmPassword,
@@ -563,9 +599,7 @@ fun SettingsScreen(
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
-
                         HorizontalDivider(color = BorderDivider)
-
                         Spacer(modifier = Modifier.height(24.dp))
 
                         SettingsSectionHeader("Account")
@@ -574,6 +608,307 @@ fun SettingsScreen(
                             text = "Logout",
                             onClick = onLogout,
                             leadingIcon = Icons.Default.Lock
+                        )
+
+                        Spacer(modifier = Modifier.height(40.dp))
+                    }
+                }
+
+                // ── PRINTER TAB ───────────────────────────────────────────────
+                2 -> {
+                    val pm = printerManager
+                    val hasPerms = pm?.hasBluetoothPermissions() == true
+                    val isBtOn = pm?.isBluetoothEnabled() == true
+                    val isConnected = pm?.isConnected == true
+                    val connectedDev = pm?.connectedDevice
+
+                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                        SettingsSectionHeader("Hardware Radio Status")
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, BorderDivider, RoundedCornerShape(12.dp))
+                                .padding(16.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Bluetooth Radio", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                    Text(
+                                        text = if (isBtOn) "Enabled" else "Disabled",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isBtOn) StatusSuccess else StatusError
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Bluetooth Permissions", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                    Text(
+                                        text = if (hasPerms) "Granted" else "Required",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (hasPerms) StatusSuccess else StatusWarning
+                                    )
+                                }
+
+                                if (!hasPerms) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    AppSecondaryButton(
+                                        text = "Grant Bluetooth Permissions",
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                btPermissionLauncher.launch(
+                                                    arrayOf(
+                                                        Manifest.permission.BLUETOOTH_CONNECT,
+                                                        Manifest.permission.BLUETOOTH_SCAN
+                                                    )
+                                                )
+                                            } else {
+                                                btPermissionLauncher.launch(
+                                                    arrayOf(
+                                                        Manifest.permission.BLUETOOTH,
+                                                        Manifest.permission.BLUETOOTH_ADMIN
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+                        SettingsSectionHeader("Active Thermal Printer")
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = AppSurface),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, BorderDivider, RoundedCornerShape(12.dp))
+                                .padding(16.dp)
+                        ) {
+                            if (isConnected && connectedDev != null) {
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = connectedDev.name ?: "Thermal Printer",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TextPrimary
+                                            )
+                                            Text(
+                                                text = connectedDev.address,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .background(StatusSuccessBg, RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(StatusSuccess)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Connected",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = StatusSuccess
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        AppPrimaryButton(
+                                            text = if (isTestingPrinter) "Printing..." else "Print Test Page",
+                                            onClick = {
+                                                isTestingPrinter = true
+                                                coroutineScope.launch {
+                                                    val res = pm?.printTestPage()
+                                                    isTestingPrinter = false
+                                                    if (res?.isSuccess == true) {
+                                                        successMessage = "Test page printed successfully!"
+                                                    } else {
+                                                        errorMessage = res?.exceptionOrNull()?.message ?: "Test print failed"
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+
+                                        AppSecondaryButton(
+                                            text = "Disconnect",
+                                            onClick = {
+                                                pm?.disconnect()
+                                                successMessage = "Printer disconnected"
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Print,
+                                        contentDescription = null,
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "No Printer Connected",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Select a paired thermal printer below to connect",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SettingsSectionHeader("Paired Devices")
+                            IconButton(onClick = { refreshPrinterDevices() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh Devices",
+                                    tint = PrimaryAccent
+                                )
+                            }
+                        }
+
+                        if (pairedDevices.isEmpty()) {
+                            Text(
+                                text = "No paired Bluetooth devices detected.\nTurn on your thermal printer, pair it via Android Settings, and tap Refresh above.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                pairedDevices.forEach { dev ->
+                                    val isThisConnected = isConnected && connectedDev?.address == dev.address
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = AppSurface),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .border(1.dp, BorderDivider, RoundedCornerShape(10.dp))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                Text(
+                                                    text = dev.name ?: "Unknown Device",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = TextPrimary,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = dev.address,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = TextSecondary,
+                                                    maxLines = 1
+                                                )
+                                            }
+
+                                            if (isThisConnected) {
+                                                Text(
+                                                    text = "Active",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = StatusSuccess
+                                                )
+                                            } else {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        isConnectingPrinter = true
+                                                        errorMessage = null
+                                                        successMessage = null
+                                                        coroutineScope.launch {
+                                                            val res = pm?.connect(dev)
+                                                            isConnectingPrinter = false
+                                                            if (res?.isSuccess == true) {
+                                                                successMessage = "Connected to ${dev.name ?: dev.address}"
+                                                            } else {
+                                                                errorMessage = res?.exceptionOrNull()?.message ?: "Connection failed"
+                                                            }
+                                                        }
+                                                    },
+                                                    enabled = !isConnectingPrinter,
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryAccent),
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                                    modifier = Modifier.height(36.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (isConnectingPrinter) "..." else "Connect",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        AppSecondaryButton(
+                            text = "Pair New Device (Android Settings)",
+                            onClick = {
+                                try {
+                                    val intent = Intent(AndroidSettings.ACTION_BLUETOOTH_SETTINGS)
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            },
+                            leadingIcon = Icons.Default.Bluetooth
                         )
 
                         Spacer(modifier = Modifier.height(40.dp))

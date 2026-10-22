@@ -15,8 +15,8 @@ const createSiteSchema = z.object({
   gateInfo:           z.string().optional(),
   totalCarSlots:      z.number().int().min(0).default(40),
   totalScooterSlots:  z.number().int().min(0).default(20),
-  defaultCarRate:     z.number().min(0).default(30),
-  defaultScooterRate: z.number().min(0).default(15),
+  defaultCarRate:     z.number().positive('Car parking rate must be greater than 0'),
+  defaultScooterRate: z.number().positive('Scooter parking rate must be greater than 0'),
   status:             z.enum(['Active', 'Coming Soon']).default('Active'),
   latitude:           z.number().optional(),
   longitude:          z.number().optional(),
@@ -61,8 +61,8 @@ sitesRouter.get('/', requireAuth, async (req, res, next) => {
         gateInfo:         loc.gateInfo ?? 'Main Entrance Gate',
         totalCarSlots:    loc.totalCarSlots ?? 40,
         totalScooterSlots: loc.totalScooterSlots ?? 20,
-        defaultCarRate:    carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30,
-        defaultScooterRate: scooterRate ? parseFloat(scooterRate.toString()) : loc.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 15,
+        defaultCarRate:    carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 0,
+        defaultScooterRate: scooterRate ? parseFloat(scooterRate.toString()) : loc.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 0,
         status: loc.status,
         latitude: loc.latitude,
         longitude: loc.longitude,
@@ -118,8 +118,8 @@ sitesRouter.get('/:id', requireAuth, async (req, res, next) => {
       gateInfo:         loc.gateInfo ?? 'Main Entrance Gate',
       totalCarSlots:    loc.totalCarSlots ?? carSlots.length,
       totalScooterSlots: loc.totalScooterSlots ?? scooterSlots.length,
-      defaultCarRate:    carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 30,
-      defaultScooterRate: scooterRate ? parseFloat(scooterRate.toString()) : loc.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 15,
+      defaultCarRate:    carRate ? parseFloat(carRate.toString()) : loc.defaultCarRate ? parseFloat(loc.defaultCarRate.toString()) : 0,
+      defaultScooterRate: scooterRate ? parseFloat(scooterRate.toString()) : loc.defaultScooterRate ? parseFloat(loc.defaultScooterRate.toString()) : 0,
       status: loc.status,
       latitude: loc.latitude,
       longitude: loc.longitude,
@@ -141,10 +141,10 @@ sitesRouter.get('/:id', requireAuth, async (req, res, next) => {
 /**
  * POST /api/v1/sites
  * Registers a new physical parking site. Admin-only.
+ * Requires and validates parking rates for both cars and scooters.
  */
 sitesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-
     const raw  = createSiteSchema.parse(req.body);
     const code = raw.code ?? ('site-' + raw.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-'));
     const city = raw.city ?? 'Pune';
@@ -212,11 +212,10 @@ sitesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
 
 /**
  * PUT /api/v1/sites/:id
- * Updates an existing site. Admin-only.
+ * Updates an existing site and its rate_master records. Admin-only.
  */
 sitesRouter.put('/:id', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-
     const id     = req.params.id as string;
     const isUuid = id.length === 36 && id.includes('-');
     const data   = updateSiteSchema.parse(req.body);
@@ -227,9 +226,59 @@ sitesRouter.put('/:id', requireAuth, requireAdmin, async (req, res, next) => {
 
     if (!existing) throw new AppError('Site not found', 404);
 
-    const updated = await prisma.location.update({
-      where: { id: existing.id },
-      data,
+    const updated = await prisma.$transaction(async (tx) => {
+      const loc = await tx.location.update({
+        where: { id: existing.id },
+        data,
+      });
+
+      if (data.defaultCarRate !== undefined) {
+        await tx.rateMaster.upsert({
+          where: {
+            locationId_vehicleType: {
+              locationId: existing.id,
+              vehicleType: VehicleType.CAR,
+            },
+          },
+          update: {
+            ratePerHour: data.defaultCarRate,
+            lastUpdatedBy: req.operator!.username,
+            effectiveFrom: new Date(),
+          },
+          create: {
+            locationId: existing.id,
+            vehicleType: VehicleType.CAR,
+            ratePerHour: data.defaultCarRate,
+            lastUpdatedBy: req.operator!.username,
+            effectiveFrom: new Date(),
+          },
+        });
+      }
+
+      if (data.defaultScooterRate !== undefined) {
+        await tx.rateMaster.upsert({
+          where: {
+            locationId_vehicleType: {
+              locationId: existing.id,
+              vehicleType: VehicleType.SCOOTER,
+            },
+          },
+          update: {
+            ratePerHour: data.defaultScooterRate,
+            lastUpdatedBy: req.operator!.username,
+            effectiveFrom: new Date(),
+          },
+          create: {
+            locationId: existing.id,
+            vehicleType: VehicleType.SCOOTER,
+            ratePerHour: data.defaultScooterRate,
+            lastUpdatedBy: req.operator!.username,
+            effectiveFrom: new Date(),
+          },
+        });
+      }
+
+      return loc;
     });
 
     res.json(updated);

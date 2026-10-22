@@ -1,4 +1,4 @@
-package com.example.smartparkingoperator.data.repository
+﻿package com.example.smartparkingoperator.data.repository
 
 import com.example.smartparkingoperator.data.local.AppDatabase
 import com.example.smartparkingoperator.data.local.entity.ActiveSessionEntity
@@ -52,8 +52,14 @@ class ParkingRepository(
     fun getReceipt(sessionId: String): Flow<ReceiptEntity?> =
         database.receiptDao().getReceiptBySessionId(sessionId)
 
+    fun getAllReceipts(): Flow<List<ReceiptEntity>> =
+        database.receiptDao().getAllReceipts()
+
     fun getPendingActionCount(): Flow<Int> =
         database.pendingActionDao().getPendingCountFlow()
+
+    fun getPersistedTodaySummary(): Flow<com.example.smartparkingoperator.data.local.entity.TodaySummaryEntity?> =
+        database.todaySummaryDao().getTodaySummaryFlow()
 
     suspend fun getActiveSessionByPlate(plate: String): ActiveSessionEntity? = withContext(Dispatchers.IO) {
         val cleanPlate = plate.uppercase().replace("[^A-Z0-9]".toRegex(), "")
@@ -153,9 +159,20 @@ class ParkingRepository(
     }
 
     /**
-     * Confirms a vehicle exit and computes billing receipt.
-     * Enqueues immediately to Room outbox with client UUID.
-     * Marks session closed and frees local slot count immediately.
+     * Confirms a vehicle exit and returns an authoritative receipt.
+     *
+     * Online path (preferred):
+     *   1. POST /api/v1/exits to the backend.
+     *   2. Map the server's authoritative response (billing computed on server) to ReceiptEntity.
+     *   3. Remove session from Room and update local slot counts.
+     *
+     * Offline path:
+     *   1. Generate a provisional receipt using locally-cached rate data (amount will be 0 if rates missing).
+     *   2. Queue an EXIT action in the Room outbox for later sync.
+     *   3. Mark the receipt as pending confirmation.
+     *
+     * The receipt's billing fields (amount, ratePerHour, duration) always come from the server
+     * when online, never from independent Android-side calculations.
      */
     suspend fun confirmExit(
         session: ActiveSessionEntity
@@ -164,73 +181,125 @@ class ParkingRepository(
             val isOffline = !connectivityObserver.isConnected()
             val now = System.currentTimeMillis()
             val isoTimestamp = formatIsoDate(now)
-
-            // 1. Calculate duration and fee
-            val durationMs = (now - session.inTime).coerceAtLeast(0)
-            val durationMinutes = ((durationMs / 60000L).toInt()).coerceAtLeast(1)
-            val hours = Math.ceil(durationMinutes / 60.0).toInt().coerceAtLeast(1)
-
-            val rateEntity = database.rateDao().getRateForType(session.vehicleType)
-            val ratePerHour = rateEntity?.ratePerHour ?: (if (session.vehicleType == "CAR") 40.0 else 20.0)
-            val amount = hours * ratePerHour
-
-            val operatorId = sessionManager.getOperatorId() ?: "operator-01"
-            val receiptId = UUID.randomUUID().toString()
             val idempotencyKey = UUID.randomUUID().toString()
 
-            val receipt = ReceiptEntity(
-                id = receiptId,
-                sessionId = session.id,
-                vehicleNumber = session.vehicleNumber,
-                inTime = session.inTime,
-                outTime = now,
-                durationMinutes = durationMinutes,
-                ratePerHour = ratePerHour,
-                amount = amount,
-                operatorId = operatorId,
-                generatedOn = now,
-                isPendingConfirmation = isOffline
-            )
-
-            // 2. Insert receipt into Room
-            database.receiptDao().insertReceipt(receipt)
-
-            // 3. Remove session from active_sessions table
-            database.activeSessionDao().deleteSessionById(session.id)
-
-            // 4. Free slot count in local availability
             val carDelta = if (session.vehicleType == "CAR") 1 else 0
             val scooterDelta = if (session.vehicleType == "SCOOTER") 1 else 0
-            database.availabilityDao().adjustAvailabilityDelta(session.locationId, carDelta, scooterDelta, now)
 
-            // 5. Enqueue Exit action into Outbox
-            val exitDto = ExitRequestDto(
-                idempotencyKey = idempotencyKey,
-                sessionId = session.id,
-                vehicleNumber = session.vehicleNumber,
-                deviceTimestamp = isoTimestamp,
-                capturedOffline = isOffline
-            )
-
-            val pendingAction = PendingActionEntity(
-                id = idempotencyKey,
-                actionType = "EXIT",
-                payloadJson = gson.toJson(exitDto),
-                status = "PENDING",
-                capturedOffline = isOffline,
-                deviceTimestamp = now,
-                createdAt = now
-            )
-            database.pendingActionDao().insertAction(pendingAction)
-
-            // Immediately trigger sync to backend if online
             if (!isOffline) {
-                try {
-                    syncPendingActions()
-                } catch (_: Exception) {
-                    // Fail safely; action remains in Room outbox
+                // ── Online: post exit, receive authoritative bill from backend ──────────────
+                val exitDto = ExitRequestDto(
+                    idempotencyKey = idempotencyKey,
+                    sessionId = session.id,
+                    vehicleNumber = session.vehicleNumber,
+                    deviceTimestamp = isoTimestamp,
+                    capturedOffline = false
+                )
+                val response = apiService.postExit(exitDto)
+                if (response.isSuccessful && response.body() != null) {
+                    val r = response.body()!!
+
+                    val inTimeMs  = parseIsoDate(r.inTime)
+                    val outTimeMs = parseIsoDate(r.outTime)
+                    val genOnMs   = parseIsoDate(r.generatedOn)
+
+                    val durationMins = r.durationMinutes
+                    val durHrs  = durationMins / 60
+                    val durMins = durationMins % 60
+                    val durationText = r.durationText
+                        ?: if (durHrs > 0) "${durHrs}h ${durMins}m" else "${durMins}m"
+
+                    val receipt = ReceiptEntity(
+                        id                    = r.billId,
+                        sessionId             = r.sessionId,
+                        ticketId              = r.ticketId ?: "PK-${r.sessionId.take(8).uppercase()}",
+                        vehicleNumber         = r.vehicleNumber,
+                        vehicleType           = r.category ?: r.vehicleType ?: session.vehicleType,
+                        slotCode              = r.slotCode ?: r.slotId ?: session.slotCode,
+                        siteName              = r.siteName ?: "",
+                        siteAddress           = r.siteAddress ?: "",
+                        inTime                = inTimeMs,
+                        outTime               = outTimeMs,
+                        durationMinutes       = durationMins,
+                        durationText          = durationText,
+                        ratePerHour           = r.rateApplied,
+                        amount                = r.amount,
+                        paymentStatus         = r.paymentStatus ?: "PAID",
+                        paymentMethod         = r.paymentMethod ?: "Cash / UPI Paid at Exit",
+                        operatorId            = r.operatorId,
+                        generatedOn           = genOnMs,
+                        isPendingConfirmation = false
+                    )
+
+                    database.receiptDao().insertReceipt(receipt)
+                    database.activeSessionDao().deleteSessionById(session.id)
+                    database.availabilityDao().adjustAvailabilityDelta(session.locationId, carDelta, scooterDelta, now)
+
+                    return@withContext Result.success(receipt)
+                } else {
+                    if (response.code() == 401) sessionManager.clearSession()
+                    val errMsg = response.errorBody()?.string() ?: "Server error ${response.code()}"
+                    return@withContext Result.failure(Exception(errMsg))
                 }
             }
+
+            // ── Offline: generate provisional receipt from local rate cache ──────────────
+            val durationMs = (now - session.inTime).coerceAtLeast(0)
+            val durationMinutes = ((durationMs / 60000L).toInt()).coerceAtLeast(1)
+            val durationHours = Math.ceil(durationMinutes / 60.0).toInt().coerceAtLeast(1)
+            val durHrs  = durationMinutes / 60
+            val durMins = durationMinutes % 60
+            val durationText = if (durHrs > 0) "${durHrs}h ${durMins}m" else "${durMins}m"
+
+            val rateEntity = database.rateDao().getRateForType(session.vehicleType)
+            val ratePerHour = rateEntity?.ratePerHour ?: 0.0
+            val amount = durationHours * ratePerHour
+            val operatorId = sessionManager.getOperatorId() ?: ""
+            val receiptId = UUID.randomUUID().toString()
+
+            val receipt = ReceiptEntity(
+                id                    = receiptId,
+                sessionId             = session.id,
+                ticketId              = "PK-${session.id.take(8).uppercase()}",
+                vehicleNumber         = session.vehicleNumber,
+                vehicleType           = session.vehicleType,
+                slotCode              = session.slotCode,
+                siteName              = "",
+                siteAddress           = "",
+                inTime                = session.inTime,
+                outTime               = now,
+                durationMinutes       = durationMinutes,
+                durationText          = durationText,
+                ratePerHour           = ratePerHour,
+                amount                = amount,
+                paymentStatus         = "PENDING",
+                paymentMethod         = "Cash / UPI Paid at Exit",
+                operatorId            = operatorId,
+                generatedOn           = now,
+                isPendingConfirmation = true
+            )
+
+            database.receiptDao().insertReceipt(receipt)
+            database.activeSessionDao().deleteSessionById(session.id)
+            database.availabilityDao().adjustAvailabilityDelta(session.locationId, carDelta, scooterDelta, now)
+
+            database.pendingActionDao().insertAction(
+                PendingActionEntity(
+                    id              = idempotencyKey,
+                    actionType      = "EXIT",
+                    payloadJson     = gson.toJson(ExitRequestDto(
+                        idempotencyKey  = idempotencyKey,
+                        sessionId       = session.id,
+                        vehicleNumber   = session.vehicleNumber,
+                        deviceTimestamp = isoTimestamp,
+                        capturedOffline = true
+                    )),
+                    status          = "PENDING",
+                    capturedOffline = true,
+                    deviceTimestamp = now,
+                    createdAt       = now
+                )
+            )
 
             Result.success(receipt)
         } catch (e: Exception) {
@@ -488,3 +557,4 @@ class ParkingRepository(
         }
     }
 }
+

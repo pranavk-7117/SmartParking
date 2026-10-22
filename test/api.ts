@@ -73,7 +73,7 @@ async function runTests(): Promise<void> {
 
   // ── 1. Login ─────────────────────────────────────────────────────────────
   console.log('\n1. POST /api/v1/auth/login');
-  const login = await request('POST', '/api/v1/auth/login', { username: 'admin', password: 'Admin@12345' }, false);
+  const login = await request('POST', '/api/v1/auth/login', { username: 'admin', password: process.env.ADMIN_PASSWORD ?? 'admin123' }, false);
   assert('returns 200', login.status === 200, `got ${login.status}`);
   assert('access_token present', !!login.data?.access_token);
   assert('operator_id present', !!login.data?.operator_id);

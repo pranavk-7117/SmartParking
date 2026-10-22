@@ -114,26 +114,32 @@ ratesRouter.get('/history', requireAuth, async (req, res, next) => {
 /**
  * POST /api/v1/rates
  * Updates a site's tariff and logs into audit history.
- * Admin-only. adminName is derived from req.operator.username (not accepted from body).
+ * Admin-only. Accepts both frontend format ({category, newRate}) and DTO format ({vehicleType, ratePerHour}).
  */
 ratesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-
-    // Note: adminName is intentionally NOT accepted from the request body.
-    // It is always derived from the authenticated token's username.
     const schema = z.object({
-      siteId:   z.string().min(1),
-      category: z.enum(['Car', 'Scooter']),
-      newRate:  z.number().min(1),
-    });
+      siteId:      z.string().min(1),
+      category:    z.string().optional(),
+      vehicleType: z.string().optional(),
+      newRate:     z.number().positive().optional(),
+      ratePerHour: z.number().positive().optional(),
+    }).refine(
+      (data) => (data.category || data.vehicleType) && (data.newRate !== undefined || data.ratePerHour !== undefined),
+      { message: 'category/vehicleType and newRate/ratePerHour are required' }
+    );
 
     const body       = schema.parse(req.body);
     const locationId = await resolveLocationId(body.siteId);
     if (!locationId) throw new AppError('Site not found', 404);
 
-    const vehicleType = body.category === 'Car' ? VehicleType.CAR : VehicleType.SCOOTER;
-    // Always derive admin name from the authenticated JWT — never from client input
-    const adminUser   = req.operator!.username;
+    const rawCategory = (body.category || body.vehicleType || '').toUpperCase();
+    const vehicleType = rawCategory.includes('CAR') ? VehicleType.CAR : VehicleType.SCOOTER;
+    const categoryName: 'Car' | 'Scooter' = vehicleType === VehicleType.CAR ? 'Car' : 'Scooter';
+    const finalRate = Number(body.newRate !== undefined ? body.newRate : body.ratePerHour);
+
+    // Always derive admin name from authenticated JWT
+    const adminUser = req.operator?.username ?? 'admin';
 
     const existingRate = await prisma.rateMaster.findFirst({
       where: { locationId, vehicleType },
@@ -145,25 +151,38 @@ ratesRouter.post('/', requireAuth, requireAdmin, async (req, res, next) => {
       // 1. Update or create rate master
       const updated = await tx.rateMaster.upsert({
         where:  { locationId_vehicleType: { locationId, vehicleType } },
-        update: { ratePerHour: body.newRate, effectiveFrom: new Date(), lastUpdatedBy: adminUser },
-        create: { locationId, vehicleType, ratePerHour: body.newRate, effectiveFrom: new Date(), lastUpdatedBy: adminUser },
+        update: { ratePerHour: finalRate, effectiveFrom: new Date(), lastUpdatedBy: adminUser },
+        create: { locationId, vehicleType, ratePerHour: finalRate, effectiveFrom: new Date(), lastUpdatedBy: adminUser },
         include: { location: true },
       });
 
       // 2. Add history audit entry
       await tx.rateHistory.create({
-        data: { locationId, vehicleType, oldRate: oldRateVal, newRate: body.newRate, changedBy: adminUser },
+        data: { locationId, vehicleType, oldRate: oldRateVal, newRate: finalRate, changedBy: adminUser },
       });
+
+      // 3. Keep location table default rates in sync
+      if (vehicleType === VehicleType.CAR) {
+        await tx.location.update({
+          where: { id: locationId },
+          data: { defaultCarRate: finalRate },
+        });
+      } else {
+        await tx.location.update({
+          where: { id: locationId },
+          data: { defaultScooterRate: finalRate },
+        });
+      }
 
       return updated;
     });
 
     res.json({
-      id:           `rate-${body.siteId}-${body.category.toLowerCase()}`,
+      id:           `rate-${body.siteId}-${categoryName.toLowerCase()}`,
       dbId:         result.id,
       siteId:       body.siteId,
-      category:     body.category,
-      hourlyRate:   body.newRate,
+      category:     categoryName,
+      hourlyRate:   finalRate,
       lastUpdatedAt: new Date().toLocaleDateString('en-GB', {
         day: '2-digit', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit',

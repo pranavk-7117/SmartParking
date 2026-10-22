@@ -153,6 +153,9 @@ interface ReceiptDao {
     @Query("SELECT * FROM receipts WHERE sessionId = :sessionId LIMIT 1")
     fun getReceiptBySessionId(sessionId: String): Flow<ReceiptEntity?>
 
+    @Query("SELECT * FROM receipts ORDER BY generatedOn DESC")
+    fun getAllReceipts(): Flow<List<ReceiptEntity>>
+
     @Query("SELECT * FROM receipts WHERE id = :id LIMIT 1")
     suspend fun getReceiptById(id: String): ReceiptEntity?
 
@@ -161,4 +164,18 @@ interface ReceiptDao {
 
     @Query("UPDATE receipts SET isPendingConfirmation = 0 WHERE sessionId = :sessionId")
     suspend fun markReceiptConfirmed(sessionId: String)
+}
+@Dao
+interface TodaySummaryDao {
+    @Query("SELECT * FROM today_summary WHERE id = 'singleton' LIMIT 1")
+    fun getTodaySummaryFlow(): Flow<com.example.smartparkingoperator.data.local.entity.TodaySummaryEntity?>
+
+    @Query("SELECT * FROM today_summary WHERE id = 'singleton' LIMIT 1")
+    suspend fun getTodaySummaryDirect(): com.example.smartparkingoperator.data.local.entity.TodaySummaryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTodaySummary(summary: com.example.smartparkingoperator.data.local.entity.TodaySummaryEntity)
+
+    @Query("DELETE FROM today_summary")
+    suspend fun clearTodaySummary()
 }

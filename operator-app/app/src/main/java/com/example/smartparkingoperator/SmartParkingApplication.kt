@@ -5,6 +5,7 @@ import com.example.smartparkingoperator.data.local.AppDatabase
 import com.example.smartparkingoperator.data.network.ConnectivityObserver
 import com.example.smartparkingoperator.data.remote.ApiClient
 import com.example.smartparkingoperator.data.remote.ApiService
+import com.example.smartparkingoperator.data.printer.BluetoothPrinterManager
 import com.example.smartparkingoperator.data.repository.AuthRepository
 import com.example.smartparkingoperator.data.repository.ParkingRepository
 import com.example.smartparkingoperator.data.security.SecureSessionManager
@@ -34,6 +35,8 @@ class AppContainer(application: Application) {
         connectivityObserver = connectivityObserver,
         parkingRepository = parkingRepository
     )
+
+    val bluetoothPrinterManager: BluetoothPrinterManager = BluetoothPrinterManager(application)
 }
 
 class SmartParkingApplication : Application() {

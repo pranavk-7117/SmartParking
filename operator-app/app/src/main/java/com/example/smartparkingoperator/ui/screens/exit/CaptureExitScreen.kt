@@ -2,6 +2,9 @@ package com.example.smartparkingoperator.ui.screens.exit
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
+import com.example.smartparkingoperator.data.printer.BluetoothPrinterManager
+import com.example.smartparkingoperator.ui.components.ThermalReceiptCard
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TwoWheeler
@@ -87,6 +91,7 @@ import java.util.Locale
 @Composable
 fun CaptureExitScreen(
     parkingRepository: ParkingRepository,
+    printerManager: BluetoothPrinterManager? = null,
     initialSessionId: String? = null,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -109,6 +114,10 @@ fun CaptureExitScreen(
         hasCameraPermission = granted
     }
 
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
+
     // Screen states
     var queryPlate by remember { mutableStateOf("") }
     var isCameraActive by remember { mutableStateOf(false) }
@@ -117,6 +126,11 @@ fun CaptureExitScreen(
     var isSearching by remember { mutableStateOf(false) }
     var isProcessingExit by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+
+    // Printing states
+    var isPrinting by remember { mutableStateOf(false) }
+    var printStatusMessage by remember { mutableStateOf<String?>(null) }
+    var isPrintError by remember { mutableStateOf(false) }
 
     val dateTimeFormatter = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()) }
     val timeFormatter = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
@@ -223,97 +237,127 @@ fun CaptureExitScreen(
 
         when {
             generatedReceipt != null -> {
-                // STEP 3: Receipt Screen
+                // STEP 3: Complete Professional Receipt Display matching frontend
                 val receipt = generatedReceipt!!
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(20.dp)
+                        .padding(16.dp)
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = AppSurface),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, BorderDivider, RoundedCornerShape(12.dp))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Receipt,
-                                contentDescription = null,
-                                tint = PrimaryAccent,
-                                modifier = Modifier.size(36.dp)
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = "SMART PARKING RECEIPT",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-
-                            if (receipt.isPendingConfirmation) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                StatusBadge(
-                                    text = "Pending Server Confirmation",
-                                    statusType = BadgeStatusType.PENDING,
-                                    icon = Icons.Default.HourglassEmpty
-                                )
-                            } else {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                StatusBadge(
-                                    text = "Server Confirmed",
-                                    statusType = BadgeStatusType.SUCCESS,
-                                    icon = Icons.Default.CheckCircle
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            HorizontalDivider(color = BorderDivider)
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            ReceiptLineItem("Vehicle Plate", receipt.vehicleNumber, isBold = true)
-                            ReceiptLineItem("Operator ID", receipt.operatorId)
-                            ReceiptLineItem("In-Time", dateTimeFormatter.format(Date(receipt.inTime)))
-                            ReceiptLineItem("Out-Time", dateTimeFormatter.format(Date(receipt.outTime)))
-                            ReceiptLineItem("Duration", "${receipt.durationMinutes} mins")
-                            ReceiptLineItem("Tariff Applied", "₹${String.format(Locale.US, "%.2f", receipt.ratePerHour)}/hr")
-
-                            Spacer(modifier = Modifier.height(12.dp))
-                            HorizontalDivider(color = BorderDivider)
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "TOTAL PAYABLE",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "₹${String.format(Locale.US, "%.2f", receipt.amount)}",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = PrimaryAccent
-                                )
-                            }
-                        }
+                    // Confirmation badge
+                    if (receipt.isPendingConfirmation) {
+                        StatusBadge(
+                            text = "Pending Server Confirmation",
+                            statusType = BadgeStatusType.PENDING,
+                            icon = Icons.Default.HourglassEmpty
+                        )
+                    } else {
+                        StatusBadge(
+                            text = "Exit Completed & Server Confirmed",
+                            statusType = BadgeStatusType.SUCCESS,
+                            icon = Icons.Default.CheckCircle
+                        )
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
+                    // Pixel-perfect thermal receipt card matching ReceiptModal.tsx & media
+                    ThermalReceiptCard(receipt = receipt)
+
+                    // Print status message (if any)
+                    if (printStatusMessage != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = printStatusMessage!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isPrintError) StatusError else StatusSuccess,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Print Bill Action Button
                     AppPrimaryButton(
+                        text = if (isPrinting) "Printing Receipt..." else "Print Bill (Bluetooth)",
+                        onClick = {
+                            val pm = printerManager
+                            if (pm == null) {
+                                printStatusMessage = "Bluetooth printing is not initialized"
+                                isPrintError = true
+                            } else if (!pm.hasBluetoothPermissions()) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    btPermissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.BLUETOOTH_CONNECT,
+                                            Manifest.permission.BLUETOOTH_SCAN
+                                        )
+                                    )
+                                } else {
+                                    btPermissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.BLUETOOTH,
+                                            Manifest.permission.BLUETOOTH_ADMIN
+                                        )
+                                    )
+                                }
+                            } else if (!pm.isBluetoothEnabled()) {
+                                printStatusMessage = "Please turn on Bluetooth to print receipt"
+                                isPrintError = true
+                            } else if (!pm.isConnected) {
+                                val paired = pm.getPairedDevices()
+                                if (paired.isEmpty()) {
+                                    printStatusMessage = "No paired printer found. Please pair printer in Android Settings or App Settings."
+                                    isPrintError = true
+                                } else {
+                                    isPrinting = true
+                                    printStatusMessage = "Connecting to ${paired.first().name ?: "thermal printer"}..."
+                                    isPrintError = false
+                                    coroutineScope.launch {
+                                        val connRes = pm.connect(paired.first())
+                                        if (connRes.isSuccess) {
+                                            val printRes = pm.printReceipt(receipt)
+                                            isPrinting = false
+                                            if (printRes.isSuccess) {
+                                                printStatusMessage = "Receipt printed successfully!"
+                                                isPrintError = false
+                                            } else {
+                                                printStatusMessage = printRes.exceptionOrNull()?.message ?: "Print job failed"
+                                                isPrintError = true
+                                            }
+                                        } else {
+                                            isPrinting = false
+                                            printStatusMessage = connRes.exceptionOrNull()?.message ?: "Could not connect to printer"
+                                            isPrintError = true
+                                        }
+                                    }
+                                }
+                            } else {
+                                isPrinting = true
+                                printStatusMessage = "Sending to printer..."
+                                isPrintError = false
+                                coroutineScope.launch {
+                                    val printRes = pm.printReceipt(receipt)
+                                    isPrinting = false
+                                    if (printRes.isSuccess) {
+                                        printStatusMessage = "Receipt printed successfully!"
+                                        isPrintError = false
+                                    } else {
+                                        printStatusMessage = printRes.exceptionOrNull()?.message ?: "Print failed"
+                                        isPrintError = true
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    AppSecondaryButton(
                         text = "Done & Return to Home",
                         onClick = onNavigateBack
                     )

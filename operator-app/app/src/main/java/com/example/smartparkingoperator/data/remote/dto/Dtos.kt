@@ -109,15 +109,30 @@ data class ExitRequestDto(
     @SerializedName("captured_offline") val capturedOffline: Boolean
 )
 
+/**
+ * Enriched exit response — matches the backend exits.ts response.
+ * All billing fields come authoritatively from the server;
+ * the Android app must NOT independently compute amounts.
+ */
 data class ExitResponseDto(
     @SerializedName("bill_id") val billId: String,
     @SerializedName("session_id") val sessionId: String,
+    @SerializedName("ticket_id") val ticketId: String? = null,
     @SerializedName("vehicle_number") val vehicleNumber: String,
+    @SerializedName("vehicle_type") val vehicleType: String? = null,
+    @SerializedName("category") val category: String? = null,
+    @SerializedName("slot_code") val slotCode: String? = null,
+    @SerializedName("slot_id") val slotId: String? = null,
+    @SerializedName("site_name") val siteName: String? = null,
+    @SerializedName("site_address") val siteAddress: String? = null,
     @SerializedName("in_time") val inTime: String,
     @SerializedName("out_time") val outTime: String,
     @SerializedName("duration_minutes") val durationMinutes: Int,
+    @SerializedName("duration_text") val durationText: String? = null,
     @SerializedName("rate_applied") val rateApplied: Double,
     @SerializedName("amount") val amount: Double,
+    @SerializedName("payment_status") val paymentStatus: String? = "PAID",
+    @SerializedName("payment_method") val paymentMethod: String? = "Cash / UPI Paid at Exit",
     @SerializedName("generated_on") val generatedOn: String,
     @SerializedName("operator_id") val operatorId: String
 )
@@ -192,6 +207,3 @@ data class LocationUpdateResponse(
     @SerializedName("allowedRadiusMeters") val allowedRadiusMeters: Int?,
     @SerializedName("lastLocationUpdate") val lastLocationUpdate: String?
 )
-
-
-

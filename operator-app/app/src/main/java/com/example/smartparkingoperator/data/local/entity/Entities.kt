@@ -62,17 +62,41 @@ data class PendingActionEntity(
     val lastErrorMessage: String? = null
 )
 
+/**
+ * Receipt entity — stores the authoritative bill data returned by the backend.
+ * All monetary fields (amount, ratePerHour) come from the server response,
+ * not from local calculation, ensuring billing integrity.
+ */
 @Entity(tableName = "receipts")
 data class ReceiptEntity(
-    @PrimaryKey val id: String,
+    @PrimaryKey val id: String,           // bill_id from server
     val sessionId: String,
+    val ticketId: String = "",            // PK-XXXXXXXX format from server
     val vehicleNumber: String,
+    val vehicleType: String = "",         // "Car" or "Scooter"
+    val slotCode: String = "",            // e.g. "C-01"
+    val siteName: String = "",
+    val siteAddress: String = "",
     val inTime: Long,
     val outTime: Long,
     val durationMinutes: Int,
+    val durationText: String = "",        // "2h 15m" pre-formatted by server
     val ratePerHour: Double,
     val amount: Double,
+    val paymentStatus: String = "PAID",
+    val paymentMethod: String = "Cash / UPI Paid at Exit",
     val operatorId: String,
     val generatedOn: Long = System.currentTimeMillis(),
     val isPendingConfirmation: Boolean = false // true when generated offline
+)
+
+@Entity(tableName = "today_summary")
+data class TodaySummaryEntity(
+    @PrimaryKey val id: String = "singleton",
+    val entries: Int,
+    val exits: Int,
+    val currentlyParked: Int,
+    val todayRevenue: Int,
+    val dateString: String,
+    val lastUpdated: Long = System.currentTimeMillis()
 )

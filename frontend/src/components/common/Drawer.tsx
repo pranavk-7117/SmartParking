@@ -33,7 +33,7 @@ export const Drawer: React.FC<DrawerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-[9999] overflow-hidden">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-neutral-900/40 backdrop-blur-xs transition-opacity duration-300"

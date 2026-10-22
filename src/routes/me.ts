@@ -53,8 +53,19 @@ meRouter.get('/today-summary', requireAuth, async (req, res, next) => {
       });
     }
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    // Determine start of current calendar day with timezone awareness (defaulting to IST UTC+5:30)
+    const tzOffsetMinutes = typeof req.query.tzOffset === 'string'
+      ? parseInt(req.query.tzOffset as string, 10)
+      : -330; // -330 = UTC+5:30 (India Standard Time)
+    const now = new Date();
+    const clientLocalTime = new Date(now.getTime() - tzOffsetMinutes * 60 * 1000);
+    const startOfClientDay = new Date(Date.UTC(
+      clientLocalTime.getUTCFullYear(),
+      clientLocalTime.getUTCMonth(),
+      clientLocalTime.getUTCDate(),
+      0, 0, 0, 0
+    ));
+    const startOfDay = new Date(startOfClientDay.getTime() + tzOffsetMinutes * 60 * 1000);
 
     // Entries created today
     const entries = await prisma.parkingSession.count({

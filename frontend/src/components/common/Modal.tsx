@@ -41,7 +41,7 @@ export const Modal: React.FC<ModalProps> = ({
   }[maxWidth];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       <div
         className="fixed inset-0 bg-neutral-900/60 backdrop-blur-md transition-opacity"
         onClick={onClose}

@@ -636,13 +636,19 @@ export const LiveDataProvider: React.FC<{ children: ReactNode }> = ({ children }
       setAllRateHistory((prev) => [newHistoryItem, ...prev]);
 
       // Sync to backend
-      const apiCategory = category === 'Car' ? 'CAR' : 'SCOOTER';
+      const apiCategory = category === 'Car' ? 'Car' : 'Scooter';
       api
         .post('/rates', {
           siteId: currentSiteId,
-          vehicleType: apiCategory,
+          category: apiCategory,
+          vehicleType: category === 'Car' ? 'CAR' : 'SCOOTER',
+          newRate: newRate,
           ratePerHour: newRate,
           updatedBy: adminName,
+        })
+        .then(() => {
+          loadAll();
+          triggerFlash();
         })
         .catch((err) => console.error('[LiveData] updateRate failed:', err));
     },

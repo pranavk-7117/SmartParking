@@ -42,7 +42,7 @@ class LocationTracker(private val context: Context) {
         return fineGranted || coarseGranted
     }
 
-    private fun startListening() {
+    fun startListening() {
         if (!hasLocationPermission() || locationManager == null) return
 
         try {
@@ -90,6 +90,17 @@ class LocationTracker(private val context: Context) {
                 if (netLoc != null && (bestLocation == null || netLoc.time > bestLocation.time)) {
                     bestLocation = netLoc
                 }
+            }
+
+            try {
+                val passiveLoc = locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+                if (passiveLoc != null && (bestLocation == null || passiveLoc.time > bestLocation.time)) {
+                    bestLocation = passiveLoc
+                }
+            } catch (_: Exception) {}
+
+            if (bestLocation == null) {
+                startListening()
             }
 
             cachedLocation = bestLocation

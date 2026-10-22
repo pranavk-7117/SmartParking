@@ -1,3 +1,8 @@
+// Helper to extract hour in Indian Standard Time (UTC+5:30)
+function getLocalHour(d: Date): number {
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+  return ist.getUTCHours();
+}
 import { Router } from 'express';
 import { z } from 'zod';
 import { VehicleType } from '@prisma/client';
@@ -264,7 +269,7 @@ reportsRouter.get('/', async (req, res, next) => {
           let carRev = 0;
           let scooterRev = 0;
           for (const b of bills) {
-            const h = b.generatedOn.getHours();
+            const h = getLocalHour(b.generatedOn);
             if (h >= hour - 2 && h < hour) {
               const amt = parseFloat(b.amount.toString());
               if (b.session.vehicle.vehicleType === VehicleType.SCOOTER) {

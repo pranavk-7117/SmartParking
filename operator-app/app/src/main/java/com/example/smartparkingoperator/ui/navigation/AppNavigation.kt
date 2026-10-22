@@ -48,6 +48,7 @@ fun AppNavigation(
         composable(Destinations.LOGIN) {
             LoginScreen(
                 authRepository = container.authRepository,
+                sessionManager = container.sessionManager,
                 onLoginSuccess = { mustChange ->
                     if (mustChange) {
                         navController.navigate(Destinations.SETTINGS) {
@@ -100,6 +101,7 @@ fun AppNavigation(
             val sessionId = backStackEntry.arguments?.getString("sessionId")
             CaptureExitScreen(
                 parkingRepository = container.parkingRepository,
+                printerManager = container.bluetoothPrinterManager,
                 initialSessionId = if (sessionId.isNullOrBlank()) null else sessionId,
                 onNavigateBack = { navController.popBackStack() }
             )
@@ -108,6 +110,7 @@ fun AppNavigation(
         composable(Destinations.SESSIONS) {
             ActiveSessionsScreen(
                 parkingRepository = container.parkingRepository,
+                printerManager = container.bluetoothPrinterManager,
                 onNavigateBack = { navController.popBackStack() },
                 onSelectSessionForExit = { sessionId ->
                     navController.navigate(Destinations.exitWithSession(sessionId))
@@ -119,6 +122,7 @@ fun AppNavigation(
             SettingsScreen(
                 authRepository = container.authRepository,
                 parkingRepository = container.parkingRepository,
+                printerManager = container.bluetoothPrinterManager,
                 onNavigateBack = { navController.popBackStack() },
                 onLogout = {
                     container.authRepository.logout()
@@ -130,4 +134,3 @@ fun AppNavigation(
         }
     }
 }
-

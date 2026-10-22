@@ -72,7 +72,8 @@ export const SiteDetails: React.FC = () => {
   );
 
   // Calculate real total revenue strictly from transactions
-  const totalWeeklyRevenue = siteCompleted.reduce((sum, s) => sum + (s.amount || 0), 0);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const totalWeeklyRevenue = siteCompleted.filter((s) => { const t = s.outTime || s.inTime; return t ? new Date(t) >= sevenDaysAgo : false; }).reduce((sum, s) => sum + (s.amount || 0), 0);
 
   // Real 7-day revenue trend dynamically computed from session records
   const revenueTrendPoints = useMemo(() => {

@@ -2,6 +2,7 @@ package com.example.smartparkingoperator.data.remote
 
 import com.example.smartparkingoperator.BuildConfig
 import com.example.smartparkingoperator.data.security.SecureSessionManager
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -18,6 +19,25 @@ object ApiClient {
         sessionManager: SecureSessionManager,
         baseUrl: String = BuildConfig.API_BASE_URL
     ): ApiService {
+        // Dynamically rewrites request host & port based on the user-configured server URL in SecureSessionManager
+        val dynamicHostInterceptor = Interceptor { chain ->
+            val original = chain.request()
+            val configuredUrl = sessionManager.getServerUrl()
+            val parsedUrl = configuredUrl.toHttpUrlOrNull()
+
+            val requestToProceed = if (parsedUrl != null) {
+                val newUrl = original.url.newBuilder()
+                    .scheme(parsedUrl.scheme)
+                    .host(parsedUrl.host)
+                    .port(parsedUrl.port)
+                    .build()
+                original.newBuilder().url(newUrl).build()
+            } else {
+                original
+            }
+            chain.proceed(requestToProceed)
+        }
+
         val authInterceptor = Interceptor { chain ->
             val original = chain.request()
             val token = sessionManager.getAuthToken()
@@ -71,6 +91,7 @@ object ApiClient {
         }
 
         val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(dynamicHostInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(fallbackInterceptor)
             .addInterceptor(loggingInterceptor)
